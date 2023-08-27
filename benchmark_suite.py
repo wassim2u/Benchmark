@@ -1,6 +1,9 @@
-from typing import Any
+import csv
+from typing import Any, Callable
+import functools
+
 import torch
-from transformers import NllbTokenizer, AutoTokenizer, T5Tokenizer, T5TokenizerFast, T5ForConditionalGeneration, M2M100ForConditionalGeneration, NllbMoeForConditionalGeneration, SwitchTransformersForConditionalGeneration
+from transformers import  AutoConfig, NllbTokenizer, AutoTokenizer, T5Tokenizer, T5TokenizerFast, T5ForConditionalGeneration, M2M100ForConditionalGeneration, NllbMoeForConditionalGeneration, SwitchTransformersForConditionalGeneration
 from torch.profiler import profile, record_function, ProfilerActivity
 
 from datasets import load_dataset
@@ -10,10 +13,18 @@ import numpy as np
 import evaluate
 from archer.runtime import ArcherEngine
 import getpass
+from transformers.models.t5.modeling_t5 import T5Stack
+from transformers.models.nllb_moe.modeling_nllb_moe import (
+    NllbMoeEncoder,
+    NllbMoeDecoder,
+)
+from transformers.models.switch_transformers.modeling_switch_transformers import (
+    SwitchTransformersStack, )
+import transformers
 
 
-from deepspeed.accelerator import get_accelerator
-from deepspeed.profiling.flops_profiler import get_model_profile
+# from deepspeed.accelerator import get_accelerator
+# from deepspeed.profiling.flops_profiler import get_model_profile
 import utils
 from hyperparameters_config import quality_experiment_configurations_sweep
 
@@ -24,9 +35,47 @@ import traceback
                 
                 
 import pathlib
-CONFIG = {"nvme_path": f"/mnt/{getpass.getuser()}/test-data"}
 
+
+CONFIG = {"nvme_path": f"/mnt/{getpass.getuser()}/test-data"}
 METRIC_REPORTS_DIR_PATH = "./metric_logs/"
+
+
+encoder_latencies = None
+decoder_latencies = []
+
+def forward_decorator(orig_forward: Callable, path_to_logfile) -> Callable:
+
+    @functools.wraps(orig_forward)
+    def timer_forward(cls, *args, **kwargs):
+        start_time = time.perf_counter()
+        result = orig_forward(cls, *args, **kwargs)
+        end_time = time.perf_counter()
+
+        # cls.layer_latencies = {"encoder": None, "decoder": []} #Take average for decoder, and for encoder you should take latency per token (divide by sequence length)
+        if hasattr(cls, "is_decoder"):
+            layer_type = "decoder" if cls.is_decoder else "encoder"
+            
+        else:
+            layer_type = "encoder" if isinstance(cls,
+                                                 NllbMoeEncoder) else "decoder"
+            
+        
+        with open(path_to_logfile, 'a') as f:
+            # f.write(f"{layer_type},{end_time - start_time}\n")
+
+            writer = csv.writer(f)
+            writer.writerow([layer_type, end_time - start_time])
+
+
+        print(f"{layer_type} forward time: {end_time - start_time}s")
+        return result
+
+    return timer_forward
+
+
+
+
 
 source_lang = "en"
 target_lang = "fr"
@@ -132,8 +181,10 @@ def postprocess_text(preds, labels):
 
 
 
+
 class Evaluation:
     def __init__(self,model_name, evaluation_dataset, dataset_name, metrics_args, streaming=False, src_lang="en", tgt_lang="fr"):
+        self.model_name = model_name
         self.evaluation_dataset = evaluation_dataset
         self.dataset_name = dataset_name
         self.streaming = streaming
@@ -146,14 +197,15 @@ class Evaluation:
         # Define the metrics
         self.all_metrics = self.load_relevant_metrics(metrics_args)
 
+        # Add functionality to original transformers forward method to log latency
+        self.add_latency_measurement_functionality()
 
         
         # Define model and tokenizer
-        self.model_name = model_name
         if model_name in ["t5-small", "t5-base", "t5-large", "t5-3b", "t5-11b", "google/t5-v1_1-small"]: 
             # self.tokenizer = T5Tokenizer.from_pretrained(model_name, model_max_length=max_length)
             # self.tokenizer = T5TokenizerFast.from_pretrained(model_name, model_max_length=512)
-            self.tokenizer = T5TokenizerFast.from_pretrained(model_name, model_max_length=512)
+            self.tokenizer = T5TokenizerFast.from_pretrained(model_name)
             self.model = T5ForConditionalGeneration.from_pretrained(model_name)
 
         elif model_name in ["facebook/nllb-200-distilled-600M", "facebook/nllb-200-distilled-1.3B", "facebook/nllb-200-1.3B"] and src_lang == "en" and tgt_lang == "fr":
@@ -196,7 +248,30 @@ class Evaluation:
         self.model.to(self.device)
         
 
- 
+
+
+    def add_latency_measurement_functionality(self):
+        path_to_log_latency = METRIC_REPORTS_DIR_PATH + self.model_name + "_"+ self.dataset_name + "_latencies.csv"
+
+        transformers.models.t5.modeling_t5._old_t5_forward = T5Stack.forward
+        transformers.models.nllb_moe.modeling_nllb_moe._old_nllb_moe_encoder_forward = (
+            NllbMoeEncoder.forward)
+        transformers.models.nllb_moe.modeling_nllb_moe._old_nllb_moe_decoder_forward = (
+            NllbMoeDecoder.forward)
+        transformers.models.switch_transformers._old_switch_transformers_forward = (
+            SwitchTransformersStack.forward)
+        
+
+
+
+
+        T5Stack.forward = forward_decorator(T5Stack.forward, path_to_log_latency)
+        NllbMoeEncoder.forward = forward_decorator(NllbMoeEncoder.forward, path_to_log_latency)
+        NllbMoeDecoder.forward = forward_decorator(NllbMoeDecoder.forward, path_to_log_latency)
+        SwitchTransformersStack.forward = forward_decorator(
+            SwitchTransformersStack.forward, path_to_log_latency)
+
+        
 
         
     # def __call__(self, deepspeed=False, save_profile=False, export_trace_file=False, export_flame_graph=False, *args: Any, **kwds: Any) -> Any:
@@ -245,7 +320,8 @@ class Evaluation:
     #     # total_examples = len(self.evaluation_dataset["translation"])
 
 
-
+    def call_batched_w_profiler():
+        pass
 
     def call_batched(self, beam_size=1, max_length=128, batch_size=128, pytorch_profiling=False, save_res_util=False, save_metrics_csv=False, overwrite_csv=False):
         from transformers import DataCollatorForSeq2Seq
@@ -255,6 +331,7 @@ class Evaluation:
             self.preprocess_function_with_text_target,
             batched=True,
             remove_columns=self.evaluation_dataset.column_names,
+            
         )
 
         data_collator = DataCollatorForSeq2Seq(self.tokenizer, model=self.model)
@@ -274,18 +351,23 @@ class Evaluation:
             for batch in tqdm(eval_dataloader):
                     start_time_batch = time.time()
                     input_ids = batch["input_ids"].to(self.device, non_blocking=True)
+                    config = AutoConfig.from_pretrained(self.model_name)
+                    attention_mask = (input_ids != config.pad_token_id).to(input_ids.dtype)
+                    
 
                     with torch.no_grad():
-                        # batch = {k: v.to(self.device) for k, v in batch.items()}
                         if  "nllb" in model_name:
                             outputs = self.model.generate(input_ids, forced_bos_token_id=self.tokenizer.lang_code_to_id["fra_Latn"], do_sample=False, max_length=max_length, num_beams=beam_size)
+                        elif "google/switch" in model_name:
+                                
+                            outputs = self.model.generate(input_ids, do_sample=False, max_length=max_length, num_beams=beam_size,   decoder_start_token_id=0,
+                                                 bos_token_id=0)
 
                         else:
                             # outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=False, max_length=128, num_beams=1) # Works, for transformers.
                             outputs = self.model.generate(input_ids, do_sample=False, max_length=max_length, num_beams=beam_size)
 
-                        
-
+                    
                     end_time_batch = time.time()
                     latency_per_batch = end_time_batch - start_time_batch
                     latency_per_batch_sum += latency_per_batch
@@ -339,7 +421,7 @@ class Evaluation:
             metric_results_dict_w_params["batch_size"] = batch_size
             metric_results_dict_w_params["beam_size"] = beam_size
             metric_results_dict_w_params["max_length"] = max_length
-            metric_results_dict_w_params["max_source_length"] = max_source_length
+            metric_results_dict_w_params["max_source_length"] = max_source_length # TODO: Report on different sentence lengths.
 
             metric_results_dict_w_params.update(metric_results_dict)
             metric_results_dict["latency_s"] = latency_s
@@ -385,7 +467,7 @@ class Evaluation:
         
         data_collator = DataCollatorForSeq2Seq(self.tokenizer, model=self.model)
         eval_dataloader = DataLoader(
-                tokenized_datasets, collate_fn=data_collator, batch_size=batch_size
+                tokenized_datasets, collate_fn=data_collator, batch_size=batch_size, pin_memory=True
         )
 
         
@@ -415,10 +497,10 @@ class Evaluation:
                             # batch = {k: v.to(self.device) for k, v in batch.items()}
                             if  "nllb" in model_name:
                                 # Max_length and num_beams are set to the default values as in the paper.
-                                outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=True,seed=42, max_length=512, num_beams=4)
+                                outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=False, max_length=128, num_beams=1)
 
                             else:
-                                outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=True, seed=42, max_length=512, early_stopping=True, num_beams=1)
+                                outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=False, max_length=128, num_beams=1)
                     profInference.step() 
 
                 endTime.record()
@@ -446,7 +528,7 @@ class Evaluation:
         inputs = [prefix + ex["en"] for ex in examples["translation"]]
         targets = [ex["fr"] for ex in examples["translation"]]
         model_inputs = self.tokenizer(
-            inputs, text_target=targets, max_length=max_length, truncation=True
+            inputs, text_target=targets, max_length=512, truncation=True, padding="do_not_pad"
         )
         return model_inputs
 
@@ -460,7 +542,7 @@ class Evaluation:
                 metric = evaluate.load(metrics_name_map_dict[metric_name])
                 metrics_modules[metric_name] = metric
             except:
-
+                print(metric_name)
                 raise NotImplementedError("Metric not supported, or may be written incorrectly.")
             
         return metrics_modules        
@@ -468,7 +550,6 @@ class Evaluation:
 
     # TODO: pass kwargs instead. make it so that any metric can be computed
     def report_metrics(self, pred_lengths):
-        print("**************")
         print("Reporting Quality Metrics: ")
         metric_results_dict = {}
         for metric_name, metric_module in self.all_metrics.items():
@@ -488,6 +569,7 @@ class Evaluation:
                 result = metric_module.compute()
                 score = result["meteor"]
             else:
+                print(metric_name)
                 raise NotImplementedError("Metric not supported, or may be written incorrectly")
 
             print(f"Full {metric_name} metric report for this batch: {result}")
@@ -555,7 +637,7 @@ if __name__ == "__main__":
                     
         except RuntimeError as e:
             
-            with open("./fail_logs/{}.txt", "w") as log:
+            with open("./fail_logs/{}.txt".format(model_name), "w") as log:
                 log.write("ERROR: Exception occured during runtime!")
                 text = f"Hyperparameters: model_name: {model_name}, Batch_size: {batch_size}, dataset_size: {valid_split}, max_length: {max_length}, beam_size: {beam_size}"
                 log.write(text)
@@ -565,11 +647,11 @@ if __name__ == "__main__":
                 log.write("**********")
                 log.write("End of traceback message")
 
-                if "out of memory" in str(e.lower()) and batch_size !=1:  
+                if "out of memory" in str(e).lower() and batch_size !=1:  
                     log.write("Attempting to reduce batch size and retrying...")
                     batch_size = batch_size/2
                 else:
-                    print("Batch size cannot be reduced further")
+                    print("Benchmark_suite failed. Please check the logs for more information.")
                     exit(-1)
             
         exit()
@@ -577,6 +659,8 @@ if __name__ == "__main__":
 
     
     #  ------------------------------------------
+
+
 
     #  ----- Testing ----- 
 
@@ -590,7 +674,7 @@ if __name__ == "__main__":
     # # model_name = "google/t5-v1_1-small" # Test Model
     # model_name = "t5-base" # Test Model
     model_name = "t5-small"
-    model_name = "google/switch-base-128"
+    # model_name = "google/switch-base-128"
     # model_name = "facebook/nllb-200-distilled-600M"
     # model_name = "t5-11b"
     # model_name = "facebook/nllb-200-1.3B"
@@ -621,8 +705,8 @@ if __name__ == "__main__":
 
     evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming)
 
-    evalEngine.call_batched(batch_size=64, save_res_util=save_res_util, save_metrics_csv=False, overwrite_csv=False)
+    evalEngine.call_batched(batch_size=64, save_res_util=save_res_util, save_metrics_csv=True, overwrite_csv=False)
 
-
+    # evalEngine.evaluate_speed(batch_size=1)
 
 

@@ -1,0 +1,9 @@
+ERROR: Exception occured during runtime!Hyperparameters: model_name: t5-small, Batch_size: 64, dataset_size: validation[:1], max_length: 32, beam_size: 1Full traceback message:**********Traceback (most recent call last):
+  File "benchmark_suite.py", line 559, in <module>
+    evalEngine.call_batched(batch_size=32, save_res_util=save_res_util, beam_size=beam_size, max_length=max_length, save_metrics_csv=True, overwrite_csv=False)
+  File "benchmark_suite.py", line 322, in call_batched
+    metric_results_dict = self.report_metrics(pred_lengths)
+  File "benchmark_suite.py", line 497, in report_metrics
+    raise NotImplementedError("Metric not supported, or may be written incorrectly")
+NotImplementedError: Metric not supported, or may be written incorrectly
+**********End of traceback message
