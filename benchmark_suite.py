@@ -1,6 +1,6 @@
 from typing import Any
 import torch
-from transformers import NllbTokenizer, T5Tokenizer, T5TokenizerFast, T5ForConditionalGeneration, M2M100ForConditionalGeneration, NllbMoeForConditionalGeneration
+from transformers import NllbTokenizer, AutoTokenizer, T5Tokenizer, T5TokenizerFast, T5ForConditionalGeneration, M2M100ForConditionalGeneration, NllbMoeForConditionalGeneration, SwitchTransformersForConditionalGeneration
 from torch.profiler import profile, record_function, ProfilerActivity
 
 from datasets import load_dataset
@@ -8,9 +8,14 @@ from torch.utils.data import IterableDataset, Subset, DataLoader
 import pandas as pd
 import numpy as np
 import evaluate
+from archer.runtime import ArcherEngine
+import getpass
+
 
 from deepspeed.accelerator import get_accelerator
 from deepspeed.profiling.flops_profiler import get_model_profile
+import utils
+from hyperparameters_config import quality_experiment_configurations_sweep
 
 from tqdm.auto import tqdm
 import time
@@ -19,6 +24,7 @@ import traceback
                 
                 
 import pathlib
+CONFIG = {"nvme_path": f"/mnt/{getpass.getuser()}/test-data"}
 
 METRIC_REPORTS_DIR_PATH = "./metric_logs/"
 
@@ -133,7 +139,7 @@ class Evaluation:
         self.streaming = streaming
         self.src_lang = src_lang
         self.tgt_lang = tgt_lang
-        if src_lang == "en" and tgt_lang == "fr" and "t5" in model_name:
+        if src_lang == "en" and tgt_lang == "fr" and "t5" in model_name or "google/switch" in model_name:
             self.prefix = "translate English to French: "
         else:
             self.prefix = ""
@@ -148,7 +154,6 @@ class Evaluation:
             # self.tokenizer = T5Tokenizer.from_pretrained(model_name, model_max_length=max_length)
             # self.tokenizer = T5TokenizerFast.from_pretrained(model_name, model_max_length=512)
             self.tokenizer = T5TokenizerFast.from_pretrained(model_name, model_max_length=512)
-
             self.model = T5ForConditionalGeneration.from_pretrained(model_name)
 
         elif model_name in ["facebook/nllb-200-distilled-600M", "facebook/nllb-200-distilled-1.3B", "facebook/nllb-200-1.3B"] and src_lang == "en" and tgt_lang == "fr":
@@ -157,8 +162,29 @@ class Evaluation:
 
 
         elif "nllb-moe-54b" in model_name and src_lang == "en" and tgt_lang == "fr":
-            self.tokenizer = NllbTokenizer.from_pretrained(model_name, src_lang="eng_Latn", tgt_lang="fra_Latn")
-            self.model= NllbMoeForConditionalGeneration.from_pretrained(model_name)
+            
+            # self.tokenizer = NllbTokenizer.from_pretrained(model_name, src_lang="eng_Latn", tgt_lang="fra_Latn")
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name, src_lang="eng_Latn", tgt_lang="fra_Latn")
+
+            # Model would be too huge to load on GPU. Offload to Disk using Archer
+            self.archer_engine = ArcherEngine()
+            with self.archer_engine.init(NllbMoeForConditionalGeneration,
+                            ar_config=CONFIG,
+                            trace_path="./trace.json"):
+                # model_offload = NllbMoeModel.from_pretrained(model_name)
+                self.model = NllbMoeForConditionalGeneration.from_pretrained(model_name)
+            
+
+        elif "google/switch-base-128" in model_name:
+            self.tokenizer = T5TokenizerFast.from_pretrained(model_name, model_max_length=512)
+            # Model would be too huge to load on GPU. Offload to Disk using Archer
+            self.archer_engine = ArcherEngine()
+            with self.archer_engine.init(SwitchTransformersForConditionalGeneration,
+                                    ar_config=CONFIG,
+                                    trace_path="./trace.json"):
+                self.model = SwitchTransformersForConditionalGeneration.from_pretrained(
+                    'google/switch-base-128')
+
         else:
             raise NotImplementedError("Model not supported")
 
@@ -173,65 +199,58 @@ class Evaluation:
  
 
         
-    def __call__(self, deepspeed=False, save_profile=False, export_trace_file=False, export_flame_graph=False, *args: Any, **kwds: Any) -> Any:
-        if deepspeed:
-            with get_accelerator().device(0):
-                flops, macs, params = get_model_profile(
-                    self.model,
-                    kwargs=self.preprocess_function_constructor(),
-                    print_profile=True,
-                    detailed=True,
-                )
-                print(flops)
-                print(macs)
-                print(params)
-                exit()
+    # def __call__(self, deepspeed=False, save_profile=False, export_trace_file=False, export_flame_graph=False, *args: Any, **kwds: Any) -> Any:
+    #     if deepspeed:
+    #         with get_accelerator().device(0):
+    #             flops, macs, params = get_model_profile(
+    #                 self.model,
+    #                 kwargs=self.preprocess_function_constructor(),
+    #                 print_profile=True,
+    #                 detailed=True,
+    #             )
+    #             print(flops)
+    #             print(macs)
+    #             print(params)
+    #             exit()
 
                 
 
 
-        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True, profile_memory=True) as profInference:
-            # TODO: torch.no_grad() or without it?
-            with record_function("model_inference"):
-                # TODO: Use datsets.map() instead of this function
-                self.inputs = self.preprocess_function().input_ids.to(self.device)
-                with torch.no_grad():
-                    outputs = self.model.generate(self.inputs, max_new_tokens=40, do_sample=True, top_k=30, top_p=0.95)
-                decoded_labels = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
+    #     with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True, profile_memory=True) as profInference:
+    #         # TODO: torch.no_grad() or without it?
+    #         with record_function("model_inference"):
+    #             # TODO: Use datsets.map() instead of this function
+    #             self.inputs = self.preprocess_function().input_ids.to(self.device)
+    #             with torch.no_grad():
+    #                 outputs = self.model.generate(self.inputs, max_new_tokens=40, do_sample=True, top_k=30, top_p=0.95)
+    #             decoded_labels = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
         
         
-        result = self.calculate_bleu(decoded_labels, self.evaluation_dataset["translation"])
-        print(result)
+    #     result = self.calculate_bleu(decoded_labels, self.evaluation_dataset["translation"])
+    #     print(result)
         
         
-        # Get the resource utilization from the profiler 
+    #     # Get the resource utilization from the profiler 
 
-        res_util_df = pd.DataFrame({e.key:e.__dict__ for e in profInference.key_averages()}).T
-        res_util_df[['count', 'cpu_time_total', 'cuda_time_total']].sort_values(['cuda_time_total', 'cpu_time_total'], ascending=False)
-        if save_profile:
-            res_util_df.to_csv(METRIC_REPORTS_DIR_PATH + self.model_name + "_"+ self.dataset_name + "_res_util_full.csv")
-        print(res_util_df.head(10))
+    #     res_util_df = pd.DataFrame({e.key:e.__dict__ for e in profInference.key_averages()}).T
+    #     res_util_df[['count', 'cpu_time_total', 'cuda_time_total']].sort_values(['cuda_time_total', 'cpu_time_total'], ascending=False)
+    #     if save_profile:
+    #         res_util_df.to_csv(METRIC_REPORTS_DIR_PATH + self.model_name + "_"+ self.dataset_name + "_res_util_full.csv")
+    #     print(res_util_df.head(10))
     
-        # # Calculate Throughput:  Get the total time and number of examples from the profiler
-        # print(profInference.self_cpu_time_total)
-        # total_time = float(profInference.self_cpu_time_total) / 1000.0  # Convert to seconds
-        # print(total_time)
-        # total_examples = len(self.evaluation_dataset["translation"])
+    #     # # Calculate Throughput:  Get the total time and number of examples from the profiler
+    #     # print(profInference.self_cpu_time_total)
+    #     # total_time = float(profInference.self_cpu_time_total) / 1000.0  # Convert to seconds
+    #     # print(total_time)
+    #     # total_examples = len(self.evaluation_dataset["translation"])
 
 
-    # def call_with_nvtx(self):
-    #     with torch.autograd.profiler.emit_nvtx():
-    #         self.inputs = self.preprocess_function().to(self.device)
-    #         with torch.no_grad():
-    #             outputs = self.model.generate(self.inputs, max_new_tokens=40, do_sample=True, top_k=30, top_p=0.95)
-    #         decoded_labels = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
-        
 
 
-    def call_batched(self, beam_size=1, max_length=128, batch_size=128, save_res_util=False, save_metrics_csv=False, overwrite_csv=False):
+    def call_batched(self, beam_size=1, max_length=128, batch_size=128, pytorch_profiling=False, save_res_util=False, save_metrics_csv=False, overwrite_csv=False):
         from transformers import DataCollatorForSeq2Seq
 
-
+    
         tokenized_datasets = self.evaluation_dataset.map(
             self.preprocess_function_with_text_target,
             batched=True,
@@ -244,75 +263,69 @@ class Evaluation:
                 tokenized_datasets, collate_fn=data_collator, batch_size=batch_size, pin_memory=True
         )
 
-        scores_sacrebleu = []
-        scores_chrfpp = []
 
-
-        all_preds, all_labels = None, None
         pred_lengths = np.array([])
 
         start_time_total = time.time()
-        batches_latencies = 0
-    
-        for batch in tqdm(eval_dataloader):
-                start_time_batch = time.time()
-                with torch.no_grad():
-                    # batch = {k: v.to(self.device) for k, v in batch.items()}
-                    if  "nllb" in model_name:
-                        outputs = self.model.generate(batch["input_ids"].to(self.device), forced_bos_token_id=self.tokenizer.lang_code_to_id["fra_Latn"], do_sample=False, max_length=max_length, num_beams=beam_size)
+        latency_per_batch_sum = 0
+        if not pytorch_profiling:
+            
+            
+            for batch in tqdm(eval_dataloader):
+                    start_time_batch = time.time()
+                    input_ids = batch["input_ids"].to(self.device, non_blocking=True)
 
-                    else:
-                        # outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=False, max_length=128, num_beams=1) # Works, for transformers.
+                    with torch.no_grad():
+                        # batch = {k: v.to(self.device) for k, v in batch.items()}
+                        if  "nllb" in model_name:
+                            outputs = self.model.generate(input_ids, forced_bos_token_id=self.tokenizer.lang_code_to_id["fra_Latn"], do_sample=False, max_length=max_length, num_beams=beam_size)
+
+                        else:
+                            # outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=False, max_length=128, num_beams=1) # Works, for transformers.
+                            outputs = self.model.generate(input_ids, do_sample=False, max_length=max_length, num_beams=beam_size)
+
                         
-                        # outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=False, max_length=512, num_beams=4)
-                        outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=False, max_length=max_length, num_beams=beam_size)
 
-                        # outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=False, max_length=128, num_beams=4, early_stopping=True)
-                        # outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=False, max_length=512, num_beams=4, early_stopping=True)
-                        # outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=False, max_length=128, num_beams=1, early_stopping=True)
+                    end_time_batch = time.time()
+                    latency_per_batch = end_time_batch - start_time_batch
+                    latency_per_batch_sum += latency_per_batch
+                    labels = batch["labels"]
+                    decoded_preds, decoded_labels, pred_length  = postprocess_batch(outputs, labels, self.tokenizer)
+            
+                    for metric_name in self.all_metrics.keys():
+                        self.all_metrics[metric_name].add_batch(predictions=decoded_preds, references=decoded_labels)
 
-                end_time_batch = time.time()
-                latency_per_batch = end_time_batch - start_time_batch
-                batches_latencies += latency_per_batch
-                labels = batch["labels"]
-                decoded_preds, decoded_labels, pred_length  = postprocess_batch(outputs, labels, self.tokenizer)
-                # all_preds = np.concatenate((all_preds, decoded_preds), axis=0) if all_preds is not None else decoded_preds
-                # all_labels = np.concatenate((all_labels, decoded_labels), axis=0) if all_labels is not None else decoded_labels
-                # print(decoded_preds)
-                # print(decoded_labels)
-                # print("--")
-                for metric_name in self.all_metrics.keys():
-                    self.all_metrics[metric_name].add_batch(predictions=decoded_preds, references=decoded_labels)
-
-                pred_lengths = np.concatenate((pred_lengths, pred_length), axis=0) if len(pred_lengths) !=0 else pred_length
+                    pred_lengths = np.concatenate((pred_lengths, pred_length), axis=0) if len(pred_lengths) !=0 else pred_length
                 
-                # result_bleu = sacrebleu.compute(predictions=decoded_preds, references=decoded_labels, tokenize="intl", smooth_method="exp")
+                    decoded_preds, decoded_labels = None, None
 
-                # result_chrfpp = chrf.compute( word_order=2, predictions=decoded_preds, references=decoded_labels, smooth_method="exp")
-                # print(f"Full BLEU score report for this batch: {result_bleu}")
-                # scores_sacrebleu.append(result_bleu["score"])
-                # scores_chrfpp.append(result_chrfpp.score)
-                decoded_preds, decoded_labels = None, None
-                
+        else:
+            pass
+          
+                    
 
         end_time_total = time.time()
-        latency = end_time_total - start_time_total
-        print(str(latency - batches_latencies) + "diff overhead in seconds")
-        print(str(batches_latencies) + "batch_latencies seconds")
-        print(str(latency) + "latency total runtime seconds")
+        latency_all_batches = end_time_total - start_time_total
+        print(str(latency_all_batches - latency_per_batch_sum) + "diff overhead in seconds")
+        print(str(latency_per_batch_sum) + "latnecy per batch sum seconds")
+        print(str(latency_all_batches) + "latency total runtime seconds")
 
         # Export to 
         # profInference.export_chrome_trace("trace.json")
 
-        # print(all_preds[0])
 
-        # result_bleu = sacrebleu.compute(smooth_method="exp")
-        
         metric_results_dict = self.report_metrics(pred_lengths)
         end_time_total_2 = time.time()
         latency_2 = end_time_total_2 - start_time_total
-        print(str(latency_2 - latency) + "diff overhead with metric reporting in seconds")
+        print(str(latency_2 - latency_all_batches) + "diff overhead with metric reporting in seconds")
         print(str(latency_2) + "total runtime with decoding time in seconds")
+
+
+        latency_ms = latency_per_batch_sum
+        latency_s = latency_ms / 1000.0
+        print(f"Latency: {latency_s} seconds")
+        throughput =  (len(tokenized_datasets) * batch_size) / latency_per_batch_sum
+        print(f"Throughput: {throughput} ")
 
         if save_metrics_csv:
             metric_results_dict_w_params = {}
@@ -320,46 +333,30 @@ class Evaluation:
             total_params = sum(p.numel() for p in self.model.parameters())
             metric_results_dict_w_params["total_params"] = total_params
             metric_results_dict_w_params["dataset_name"] = self.dataset_name
-            metric_results_dict_w_params["dataset_size"] = self.valid_split
-            metric_results_dict_w_params["beam_size"] = beam_size
-            metric_results_dict_w_params["batch_size"] = batch_size
-            metric_results_dict_w_params["max_length"] = max_length
-            metric_results_dict_w_params["max_source_length"] = max_source_length
+            metric_results_dict_w_params["dataset_size"] = len(self.evaluation_dataset)
             metric_results_dict_w_params["src_lang"] = self.src_lang
             metric_results_dict_w_params["tgt_lang"] = self.tgt_lang
+            metric_results_dict_w_params["batch_size"] = batch_size
+            metric_results_dict_w_params["beam_size"] = beam_size
+            metric_results_dict_w_params["max_length"] = max_length
+            metric_results_dict_w_params["max_source_length"] = max_source_length
+
             metric_results_dict_w_params.update(metric_results_dict)
-            # metric_results_dict["dataset_size"] = self.dataset_size
-            # metric_results_dict["latency_s"] = latency
-            # metric_results_dict["througput"] = throughput
+            metric_results_dict["latency_s"] = latency_s
+            metric_results_dict["throughput"] = throughput
             # metric_results_dict["latency_per_sample"] = throughput
 
 
             # metric_results_dict["mem_footprint_percentage"] = self.dataset_size
             # metric_results_dict["mem_footprint_number"] = self.dataset_size
-            # metric_results_dict["dataset_size"] = self.dataset_size
-            # metric_results_dict["dataset_size"] = self.dataset_size
+
 
             if overwrite_csv or not pathlib.Path(METRIC_REPORTS_DIR_PATH + self.model_name + "_"+ self.dataset_name +  "_metrics.csv").exists():
-                pd.DataFrame(metric_results_dict, index=[0]).to_csv(METRIC_REPORTS_DIR_PATH+ self.model_name + "_"+ self.dataset_name  + "_metrics.csv")
+                pd.DataFrame(metric_results_dict_w_params, index=[0]).to_csv(METRIC_REPORTS_DIR_PATH+ self.model_name + "_"+ self.dataset_name  + "_metrics.csv", index=False)
                 print("Created new csv file")
             else:
-                    pd.DataFrame(metric_results_dict, index=[0]).to_csv(METRIC_REPORTS_DIR_PATH + self.model_name + "_"+ self.dataset_name + "_metrics.csv", mode='a', header=False)
+                    pd.DataFrame(metric_results_dict_w_params, index=[0]).to_csv(METRIC_REPORTS_DIR_PATH + self.model_name + "_"+ self.dataset_name + "_metrics.csv", index=False, mode='a', header=False)
                     print("Appended to csv file")
-        # result_bleu = sacrebleu.compute(smooth_method="exp")
-        # result_spbleu = spBleu.compute(smooth_method="exp", tokenize = "flores200")
-        # result_chrf = sacrebleu.compute()
-        # result_chrfpp = sacrebleu.compute(word_order=2)
-
-
-        # result_chrfpp = chrf.compute( word_order=2, predictions=decoded_preds, references=decoded_labels, smooth_method="exp")
-
-
-
-        # avg_score_bleu = sum(scores_sacrebleu) / len(scores_sacrebleu)
-        # avg_score_chrfpp = sum(scores_chrfpp) / len(scores_chrfpp)
-
-        # print(f"BLEU score: {avg_score_bleu:.3f}")
-        # print(f"chrf++ score: {avg_score_chrfpp:.2f}")
 
 
         # # Get the resource utilization from the profiler 
@@ -444,9 +441,6 @@ class Evaluation:
     def add_prefix(self, example):
         return prefix + example[source_lang]
 
-  
-   
-
 
     def preprocess_function_with_text_target(self,examples):
         inputs = [prefix + ex["en"] for ex in examples["translation"]]
@@ -480,20 +474,25 @@ class Evaluation:
         for metric_name, metric_module in self.all_metrics.items():
             if metric_name == "sacrebleu":
                 result = metric_module.compute() # default: smooth_method = "exp"
+                score = result["score"]
             elif metric_name == "spBleu":
-                result = metric_module.compute(tokenize="flores200")
+                result = metric_module.compute(tokenize="flores101")
+                score =  result["score"]
             elif metric_name == "chrf":
                 result = metric_module.compute()
+                score =  result["score"]
             elif metric_name == "chrf++" or metric_name == "chrfpp":
                 result = metric_module.compute(word_order=2)
+                score =  result["score"]
             elif metric_name == "meteor":
                 result = metric_module.compute()
+                score = result["meteor"]
             else:
                 raise NotImplementedError("Metric not supported, or may be written incorrectly")
 
-            print(f"Full {metric_name} score report for this batch: {result}")
+            print(f"Full {metric_name} metric report for this batch: {result}")
 
-            metric_results_dict[metric_name] = result["score"]
+            metric_results_dict[metric_name] =score
 
 
         gen_len = np.mean(pred_lengths)
@@ -504,165 +503,13 @@ class Evaluation:
         metric_results_dict["gen_len"] = gen_len
         return metric_results_dict
 
-experiment_configurations_sweep = {
-    "dataset_size" : ["1", "all"],
-    "max_length" : [32,64,128,256,512], # Maximum generation sequence length
-    "max_input_length": [15,], # Maximum input sequence length: Short sentences <= 15, Medium  15 < x< 25 , Long => 25 
-    "beam_size" : [1,2,4],
-    "model_name" : ["t5-small", "t5-base", "t5-large", "t5-11b" , "nllb-200-distilled-600M", "nllb-200-1.3B"],
-    "dataset_name" : ["wmt14"],
-    # "batch_size" : ,
-}
 
-experiment_configurations_sweep_small = {
-    "dataset_size" : ["1","100", "1000", "all"],
-    "max_length" : [32,64,128,256,512], # Maximum sequence length
-    "beam_size" : [1,2,4],
-    "model_name" : ["t5-small", "t5-base", "t5-large", "t5-3b", "t5-11b" , "nllb-200-distilled-600M"],
-    "dataset_name" : ["wmt14"],
-    # "batch_size" : ,
-}
-
-
-
-
-experiment_configurations_sweep_test = {
-    "dataset_size" : ["1","100"],
-    "max_length" : [16,512], # Maximum  sequence length
-    "model_name" : ["t5-small", "t5-base"],
-}
-
-# Parsing input arguments
-def parse_args():
-    parser = argparse.ArgumentParser(description="Finetune a transformers model on a text classification task")
-    parser.add_argument(
-        "--dataset_name",
-        type=str,
-        default=None,
-        help="The name of the dataset to use (via the datasets library).",
-    )
-
-    parser.add_argument(
-        "--predict_with_generate",
-        type=bool,
-        default=True,
-        help="",
-    )
-    parser.add_argument(
-        "--dataset_config_name",
-        type=str,
-        default=None,
-        help="The configuration name of the dataset to use (via the datasets library).",
-    )
-
-
-    parser.add_argument(
-        "--num_beams",
-        type=int,
-        default=None,
-        help=(
-            "Number of beams to use for evaluation. This argument will be "
-            "passed to ``model.generate``."
-        ),
-    )
-
-    parser.add_argument(
-        "--max_source_length",
-        type=int,
-        default=1024,
-        help=(
-            "The maximum total input sequence length after "
-            "tokenization.Sequences longer than this will be truncated, sequences shorter will be padded."
-        ),
-    )
-    parser.add_argument(
-        "--max_target_length",
-        type=int,
-        default=128,
-        help=(
-            "The maximum total sequence length for target text after "
-            "tokenization. Sequences longer than this will be truncated, sequences shorter will be padded."
-            "during ``evaluate`` and ``predict``."
-        ),
-    )
-    parser.add_argument(
-        "--val_max_target_length",
-        type=int,
-        default=None,
-        help=(
-            "The maximum total sequence length for validation "
-            "target text after tokenization.Sequences longer than this will be truncated, sequences shorter will be "
-            "padded. Will default to `max_target_length`.This argument is also used to override the ``max_length`` "
-            "param of ``model.generate``, which is used during ``evaluate`` and ``predict``."
-        ),
-    )
-
-   
-    
-
-    parser.add_argument("--source_lang", type=str, default=None, help="Source language id for translation.")
-    parser.add_argument("--target_lang", type=str, default=None, help="Target language id for translation.")
-    parser.add_argument(
-        "--source_prefix",
-        type=str,
-        default=None,
-        help="A prefix to add before every source text (useful for T5 models).",
-    )
-    parser.add_argument(
-        "--max_length",
-        type=int,
-        default=128,
-        help=(
-            "The maximum total input sequence length after tokenization. Sequences longer than this will be truncated,"
-            " sequences shorter will be padded if `--pad_to_max_lengh` is passed."
-        ),
-    )
-    parser.add_argument(
-        "--model_name_or_path",
-        type=str,
-        help="Path to pretrained model or model identifier from huggingface.co/models.",
-        required=False,
-    )
-
-    parser.add_argument(
-        "--tokenizer_name",
-        type=str,
-        default=None,
-        help="Pretrained tokenizer name or path if not the same as model_name",
-    )
-
-    parser.add_argument(
-        "--batch_size",
-        type=int,
-        default=8,
-        help="Batch size for the evaluation dataloader.",
-    )
-  
-    parser.add_argument(
-        "--with_tracking",
-        action="store_true",
-        help="Whether to enable experiment trackers for logging.",
-    )
-    parser.add_argument(
-        "--report_to",
-        type=str,
-        default="all",
-        help=(
-            'The integration to report the results and logs to. Supported platforms are `"tensorboard"`,'
-            ' `"wandb"`, `"comet_ml"` and `"clearml"`. Use `"all"` (default) to report to all integrations.'
-            "Only applicable when `--with_tracking` is passed."
-        ),
-    )
-    args = parser.parse_args()
-
-
-    if args.dataset_name is None:
-        raise ValueError("Please include a dataset name to run evaluation on")
-
-    return args
 
 
 if __name__ == "__main__":
+
+    # Extensive Experimentation with different hyperparameters
+
     # ---- Additional Hyperparameters ----
     batch_size = 64
     metrics_args = ["sacrebleu", "spBleu", "chrf", "chrfpp", "meteor"]
@@ -675,29 +522,32 @@ if __name__ == "__main__":
     save_res_util = False
     rerun_experiments = False
     # Parse the arguments
-    args = parse_args()
+    args = utils.parse_args()
 
 
     if sweep:
 
         try:
-            for dataset_size in experiment_configurations_sweep["dataset_size"]:
+            for dataset_size in quality_experiment_configurations_sweep["dataset_size"]:
                 print("*****************")
                 valid_split = None
                 if dataset_size == "all":
                     valid_split = "validation"
+                    dataset_size = str(len())
                 else:
                     valid_split = "validation[:{}]".format(dataset_size)
                 
-                print("Dataset Size: " + str(dataset_size))
-                valid_dataset = load_dataset(dataset_name, "fr-en", split="validation", streaming=False)
-                for model_name in experiment_configurations_sweep["model_name"]:
+                valid_dataset = load_dataset(dataset_name, "fr-en", split=valid_split)
+                
+                print("Validation Dataset Size: " + str())
+
+                for model_name in quality_experiment_configurations_sweep["model_name"]:
                     print("Model Name: " + str(model_name))
-                    evalEngine = Evaluation(model_name=model_name, evaluation_dataset=valid_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming)                    
+                    evalEngine = Evaluation(model_name=model_name, evaluation_dataset=valid_dataset, dataset_name=dataset_name, metrics_args = metrics_args, streaming=streaming)                    
                     
-                    for max_length in experiment_configurations_sweep["max_length"]:
+                    for max_length in quality_experiment_configurations_sweep["max_length"]:
                         print("Max Length: " + str(max_length)) # TODO: What is max_length here exactly??
-                        for beam_size in experiment_configurations_sweep["beam_size"]:
+                        for beam_size in quality_experiment_configurations_sweep["beam_size"]:
                             print("Beam Size: " + str(beam_size))
                             
                             evalEngine.call_batched(batch_size=32, save_res_util=save_res_util, beam_size=beam_size, max_length=max_length, save_metrics_csv=True, overwrite_csv=False)
@@ -726,7 +576,9 @@ if __name__ == "__main__":
             
 
     
+    #  ------------------------------------------
 
+    #  ----- Testing ----- 
 
     # Define your model
 
@@ -738,23 +590,25 @@ if __name__ == "__main__":
     # # model_name = "google/t5-v1_1-small" # Test Model
     # model_name = "t5-base" # Test Model
     model_name = "t5-small"
-    # # model_name = switch
+    model_name = "google/switch-base-128"
     # model_name = "facebook/nllb-200-distilled-600M"
     # model_name = "t5-11b"
-    model_name = "facebook/nllb-200-1.3B"
+    # model_name = "facebook/nllb-200-1.3B"
     # model_name = "facebook/nllb-moe-54b"
 
     # # dataset_name = "opus100"  # Test Dataset
-    dataset_name = "wmt14"
+    # dataset_name = "wmt14"
     # dataset_name="facebook/flores"
 
     # -------------------------
 
-
+    print("Model name: " + model_name)
     # # Define your evaluation dataset (FLORES)
     # # TODO: Change to FLORES
     # # TODO: Make sure to not use the same dataset that was used to train the models!!
-    all_dataset = load_dataset(dataset_name, "fr-en", split="validation", streaming=streaming)
+    # all_dataset = load_dataset(dataset_name, "fr-en", split="validation", streaming=streaming)
+    all_dataset = load_dataset(dataset_name, "fr-en", split="validation[:10]", streaming=streaming)
+
     # all_dataset = load_dataset(dataset_name, "fr-en", split="test", streaming=streaming)
     print(all_dataset[1])
     # all_dataset = load_dataset(dataset_name, "fra_Latn", split="dev[:100]", streaming=streaming)    
@@ -767,55 +621,8 @@ if __name__ == "__main__":
 
     evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming)
 
-    evalEngine.call_batched(batch_size=4, save_res_util=save_res_util, save_metrics_csv=False, overwrite_csv=False)
-
-    # # evalEngine(deepspeed=False)
-
-    # # evalEngine.call_with_nvtx()
+    evalEngine.call_batched(batch_size=64, save_res_util=save_res_util, save_metrics_csv=False, overwrite_csv=False)
 
 
-# TESTING 
-
-    # text = all_dataset["translation"][0]['en']
-    
-    # # text = "translate English to French: Legumes share resources with nitrogen-fixing bacteria."
-    # text = "translate English to French: " + text
-    # print(text)
-    # tokenizer = T5Tokenizer.from_pretrained(model_name)
-    # model = T5ForConditionalGeneration.from_pretrained(model_name)   
-    # model.eval()
-    # input_ids = tokenizer(text, return_tensors="pt").input_ids
-
-    # outputs = model.generate(input_ids)
-    # print(tokenizer.decode(outputs[0], skip_special_tokens=True))
-    # print(all_dataset["translation"][0]['fr'])
-
-
-# TESTING (MoE)
-    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-    # text = all_dataset["translation"][0]['en']
-    
-    # # text = "translate English to French: Legumes share resources with nitrogen-fixing bacteria."
-    # print(text)
-    # tokenizer = NllbTokenizer.from_pretrained(model_name)
-    # model = NllbMoeForConditionalGeneration.from_pretrained(model_name)   
-    # model.eval()
-    # model.to(device)
-
-    # input_ids = tokenizer(text, return_tensors="pt").input_ids
-    # input_ids = input_ids.to(device)
-    # # TODO: Check if this is correct
-    # print("Generating")
-
-    # outputs = model.generate(input_ids)
-    # # print(tokenizer.decode(outputs[0], skip_special_tokens=True))
-    # res = tokenizer.batch_decode(outputs, forced_bos_token_id=tokenizer.lang_code_to_id["fra_Latn"], max_length=50, skip_special_tokens=True)
-    # print(res)
-    # print(res[0])
-    #     # print(tokenizer.decode(outputs[0], skip_special_tokens=True))
-
-    # print(all_dataset["translation"][0]['fr'])
 
 
