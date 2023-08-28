@@ -31,7 +31,7 @@ import transformers
 # from deepspeed.accelerator import get_accelerator
 # from deepspeed.profiling.flops_profiler import get_model_profile
 import utils
-from hyperparameters_config import quality_experiment_configurations_sweep
+from hyperparameters_config import quality_experiment_configurations_sweep, large_model_quality_experiments
 
 from tqdm.auto import tqdm
 import time
@@ -40,6 +40,14 @@ import traceback
                 
                 
 import pathlib
+
+def setup_environment():
+    num_gpus = torch.cuda.device_count()
+    for gid in range(num_gpus):
+        torch.cuda.set_device(gid)
+        if torch.cuda.utilization() == 0:
+            break
+setup_environment()
 
 
 CONFIG = {"nvme_path": f"/mnt/{getpass.getuser()}/test-data"}
@@ -238,6 +246,7 @@ class Evaluation:
         self.streaming = streaming
         self.src_lang = src_lang
         self.tgt_lang = tgt_lang
+
         if src_lang == "en" and tgt_lang == "fr" and "t5" in model_name or "google/switch" in model_name:
             self.prefix = "translate English to French: "
         else:
@@ -270,7 +279,7 @@ class Evaluation:
 
 
         elif "nllb-moe-54b" in model_name and src_lang == "en" and tgt_lang == "fr":
-            
+            CONFIG["nvme_path"] = os.path.join(CONFIG["nvme_path"], "nllb-moe-54b")
             # self.tokenizer = NllbTokenizer.from_pretrained(model_name, src_lang="eng_Latn", tgt_lang="fra_Latn")
             self.tokenizer = AutoTokenizer.from_pretrained(model_name, src_lang="eng_Latn", tgt_lang="fra_Latn")
 
@@ -284,7 +293,8 @@ class Evaluation:
             
 
         elif "google/switch-base-128" in model_name:
-            self.tokenizer = T5TokenizerFast.from_pretrained(model_name, model_max_length=512)
+            CONFIG["nvme_path"] = os.path.join(CONFIG["nvme_path"], "switch-base-128")
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
             # Model would be too huge to load on GPU. Offload to Disk using Archer
             self.archer_engine = ArcherEngine()
             with self.archer_engine.init(SwitchTransformersForConditionalGeneration,
@@ -301,7 +311,8 @@ class Evaluation:
         # Set device (GPU if available)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # TODO: Check if this is correct
-        self.model.to(self.device)
+        if self.archer_engine is None:
+            self.model.to(self.device)
         
 
 
@@ -368,7 +379,7 @@ class Evaluation:
                     pytorch_profiling=False, save_res_util=False, save_metrics_csv=False, overwrite_csv=False):
         from transformers import DataCollatorForSeq2Seq
         # If path already exists for recording latencies using decorated function, it is deleted. This is to avoid rewrapping the model twice.
-        self.PATH_TO_LOG_LATENCY = FORWARD_TIMES_FILENAMES[model_name]
+        self.PATH_TO_LOG_LATENCY = FORWARD_TIMES_FILENAMES[self.model_name]
         if pathlib.Path(self.PATH_TO_LOG_LATENCY).exists():
             os.remove(self.PATH_TO_LOG_LATENCY)
         
@@ -392,32 +403,39 @@ class Evaluation:
         data_collator = DataCollatorForSeq2Seq(self.tokenizer, model=self.model)
         # TODO: should i add label_pad_token_id??
         eval_dataloader = DataLoader(
-                tokenized_datasets, collate_fn=data_collator, batch_size=batch_size, pin_memory=True
+                tokenized_datasets, collate_fn=data_collator, batch_size=batch_size, pin_memory=True, 
         )
 
-
+        print("what")
         pred_lengths = np.array([])
         # Call config to retrieve pad_token_id. Will be useful for calculating throughput.
         config = AutoConfig.from_pretrained(self.model_name)
+        self.model.config.decoder_start_token_id = self.tokenizer.pad_token_id
         number_of_total_encoded_tokens = 0
         number_of_total_decoded_tokens = 0
         total_encoded_tokens = []
+
+
         if not pytorch_profiling:
             
-            
             for batch in tqdm(eval_dataloader):
+                    decoder_start_token_id = self.model.config.pad_token_id
+
                     input_ids = batch["input_ids"].to(self.device, non_blocking=True)
+
                     attention_mask = (input_ids != config.pad_token_id).to(input_ids.dtype)
 
                     with torch.no_grad():
-                        if  "nllb" in model_name:
+                        if  "nllb" in self.model_name:
                             outputs = self.model.generate(input_ids, forced_bos_token_id=self.tokenizer.lang_code_to_id["fra_Latn"], do_sample=False, max_length=max_gen_length, num_beams=beam_size)
-                        elif "google/switch" in model_name:
-                                
-                            outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size,   decoder_start_token_id=0,
-                                                 bos_token_id=0)
+                        elif "switch" in self.model_name:
+                            print("here!")
+                            print(self.model.device)
+                            print(input_ids.device)
+                            outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size,   decoder_start_token_id=decoder_start_token_id)
 
                         else:
+                            print("no way")
                             # outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=False, max_length=128, num_beams=1) # Works, for transformers.
                             outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size)
 
@@ -469,13 +487,13 @@ class Evaluation:
             if (len(total_encoded_tokens) != len(encoder_df)):
                 print("WARNING! Number of total encoded tokens and number of encoder forward passes are not equal.")
 
-                with open("./fail_logs/{}.txt".format(model_name.replace("facebook/","").replace("google/","")), "a") as log:
+                with open("./fail_logs/{}.txt".format(self.model_name.replace("facebook/","").replace("google/","")), "a") as log:
                     log.write("WARNING! Number of total encoded tokens and number of encoder forward passes are not equal.")
                     text = f"Hyperparameters: model_name: {self.model_name}, Batch_size: {batch_size}, dataset_size: {len(self.evaluation_dataset)}, dataset_size_after_filter_wrt_input_len: {len(filtered_dataset)} max_gen_length: {max_gen_length}, beam_size: {beam_size}, max_input_seq_length: {self.hyperparameters['max_input_seq_length']}, tokenizer_padding_setting: {self.hyperparameters['tokenizer_padding_setting']}, dataset_name= {self.dataset_name} \n"
                     log.write(text)
         except AssertionError as e:
             print(e)
-            print(model_name)
+            print(self.model_name)
             print(self.hyperparameters)
             print(len(total_encoded_tokens))
             print(len(encoder_df))
@@ -565,6 +583,7 @@ class Evaluation:
             self.preprocess_function_with_text_target,
             batched=True,
             remove_columns=self.evaluation_dataset.column_names,
+
         )
         
         data_collator = DataCollatorForSeq2Seq(self.tokenizer, model=self.model)
@@ -637,6 +656,7 @@ class Evaluation:
         # print(padding_param)
         model_inputs = None
 
+
         if padding_param is not None and  padding_param == "do_not_pad":
             # Will not pad. This is the default behaviour
             model_inputs = self.tokenizer(
@@ -649,6 +669,7 @@ class Evaluation:
                 inputs, text_target=targets, max_length=512, truncation=True
             )
             # print("PAD")
+
         return model_inputs
 
     
@@ -753,10 +774,10 @@ def retrieve_relevant_validation_dataset(dataset_name, dataset_size):
     return valid_dataset
 
 
-def retrieve_previous_experiments(quality_experiment_configurations_sweep):
+def retrieve_previous_experiments(configurations_sweep):
         previous_experiments = {}
-        for model_name in quality_experiment_configurations_sweep["model_name"]:
-            for dataset_name in quality_experiment_configurations_sweep["dataset_name"]:
+        for model_name in configurations_sweep["model_name"]:
+            for dataset_name in configurations_sweep["dataset_name"]:
 
                 filename_csv = METRIC_REPORTS_DIR_PATH+ model_name + "_"+ dataset_name  + "_metrics.csv"
                 filename_csv = filename_csv.replace("facebook/", "")
@@ -792,7 +813,7 @@ if __name__ == "__main__":
     # Extensive Experimentation with different hyperparameters
 
     # ---- Additional Hyperparameters ----
-    original_batch_size = 32
+    original_batch_size = 16
     metrics_args = ["sacrebleu", "spBleu", "chrf", "chrfpp", "meteor"]
 
 
@@ -807,19 +828,22 @@ if __name__ == "__main__":
     # Parse the arguments
     args = utils.parse_args()
 
+    # configurations_sweep = quality_experiment_configurations_sweep
+    configurations_sweep = large_model_quality_experiments
+
 
     if sweep:
         # Retrieve previous experiments. If they exist, we will not run them again.
-        previous_experiments = retrieve_previous_experiments(quality_experiment_configurations_sweep)
+        previous_experiments = retrieve_previous_experiments(configurations_sweep)
         
-        for model_name in quality_experiment_configurations_sweep["model_name"]:
+        for model_name in configurations_sweep["model_name"]:
 
             print("Model Name: " + str(model_name))
-            for dataset_name in quality_experiment_configurations_sweep["dataset_name"]:
+            for dataset_name in configurations_sweep["dataset_name"]:
                 print("--------------------------------------------------------------------------------------------------")
                 print("Dataset Name: " + str(dataset_name))
 
-                for dataset_size in quality_experiment_configurations_sweep["dataset_size"]:
+                for dataset_size in configurations_sweep["dataset_size"]:
                     print("*****************")
                     
                     valid_dataset = retrieve_relevant_validation_dataset(dataset_name, dataset_size)
@@ -832,10 +856,10 @@ if __name__ == "__main__":
                         dataset_name=dataset_name, 
                         metrics_args = metrics_args,
                         streaming=streaming)      
-                    for max_input_seq_length in quality_experiment_configurations_sweep["max_input_seq_length"]:
+                    for max_input_seq_length in configurations_sweep["max_input_seq_length"]:
                         print("Max Input Length: " + str(max_input_seq_length))
 
-                        for tokenizer_padding_setting in quality_experiment_configurations_sweep["tokenizer_padding_setting"]:
+                        for tokenizer_padding_setting in configurations_sweep["tokenizer_padding_setting"]:
 
                             print("Tokenizer Padding Setting: " + str(tokenizer_padding_setting))
 
@@ -852,9 +876,9 @@ if __name__ == "__main__":
 
                             torch.cuda.empty_cache()              
                             
-                            for max_gen_length in quality_experiment_configurations_sweep["max_gen_length"]:
+                            for max_gen_length in configurations_sweep["max_gen_length"]:
                                 print("Max Gen Length: " + str(max_gen_length)) # TODO: What is max_length here exactly??
-                                for beam_size in quality_experiment_configurations_sweep["beam_size"]:
+                                for beam_size in configurations_sweep["beam_size"]:
                                     # Reset batch size to the original one
                                     batch_size = original_batch_size
                                     print("Beam Size: " + str(beam_size))
@@ -957,7 +981,7 @@ if __name__ == "__main__":
     # # model_name = "google/t5-v1_1-small" # Test Model
     # model_name = "t5-base" # Test Model
     model_name = "t5-small"
-    # model_name = "google/switch-base-128"
+    model_name = "google/switch-base-128"
     # model_name = "facebook/nllb-200-distilled-600M"
     # model_name = "t5-11b"
     # model_name = "facebook/nllb-200-1.3B"
@@ -991,4 +1015,4 @@ if __name__ == "__main__":
     evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters)
 
     # evalEngine.call_batched(batch_size=32, beam_size=64,max_gen_length=512, save_res_util=save_res_util, save_metrics_csv=True, overwrite_csv=False)
-    # evalEngine.call_batched(batch_size=32, beam_size=64,max_gen_length=64, save_res_util=save_res_util, save_metrics_csv=True, overwrite_csv=False)
+    evalEngine.call_batched(batch_size=32, beam_size=64,max_gen_length=64, save_res_util=save_res_util, save_metrics_csv=True, overwrite_csv=False)

@@ -1,0 +1,2 @@
+model_name,total_params,dataset_name,dataset_size,dataset_size_after_filter_wrt_input_len,src_lang,tgt_lang,batch_size,beam_size,max_gen_length,max_input_seq_length,tokenizer_padding_setting,sacrebleu,spBleu,chrf,chrfpp,meteor,gen_len,encoder_latency_s,decoder_latency_s,encoder_throughput,decoder_throughput
+google/switch-base-128,3318,wmt14,1,1,en,fr,32,64,64,10,do_not_pad,0.0,0.0,7.123104498207568,5.342328373655676,0.0,63.0,5.617764153983444,0.4492497521023901,3.3821287,140.2338002529191
