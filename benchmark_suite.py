@@ -760,29 +760,29 @@ if __name__ == "__main__":
 
 
     if sweep:
+        for model_name in quality_experiment_configurations_sweep["model_name"]:
+            print("Model Name: " + str(model_name))
+            for dataset_name in quality_experiment_configurations_sweep["dataset_name"]:
+                import gc
+                gc.collect()
 
-        for dataset_name in quality_experiment_configurations_sweep["dataset_name"]:
-            import gc
-            gc.collect()
+                torch.cuda.empty_cache()
+                print("--------------------------------------------------------------------------------------------------")
+                print("Dataset Name: " + str(dataset_name))
+                for dataset_size in quality_experiment_configurations_sweep["dataset_size"]:
+                    print("*****************")
+                    
+                    valid_dataset = retrieve_relevant_validation_dataset(dataset_name, dataset_size)
+                    
+                    
+                    print("Validation Dataset Size: " + str(len(valid_dataset)))
+                    for max_input_length in quality_experiment_configurations_sweep["max_input_length"]:
+                        print("Max Input Length: " + str(max_input_length))
 
-            torch.cuda.empty_cache()
-            print("--------------------------------------------------------------------------------------------------")
-            print("Dataset Name: " + str(dataset_name))
-            for dataset_size in quality_experiment_configurations_sweep["dataset_size"]:
-                print("*****************")
-                
-                valid_dataset = retrieve_relevant_validation_dataset(dataset_name, dataset_size)
-                
-                
-                print("Validation Dataset Size: " + str(len(valid_dataset)))
-                for max_input_length in quality_experiment_configurations_sweep["max_input_length"]:
-                    print("Max Input Length: " + str(max_input_length))
+                        for tokenizer_padding_setting in quality_experiment_configurations_sweep["tokenizer_padding_setting"]:
 
-                    for tokenizer_padding_setting in quality_experiment_configurations_sweep["tokenizer_padding_setting"]:
+                            print("Tokenizer Padding Setting: " + str(tokenizer_padding_setting))
 
-                        print("Tokenizer Padding Setting: " + str(tokenizer_padding_setting))
-                        for model_name in quality_experiment_configurations_sweep["model_name"]:
-                            print("Model Name: " + str(model_name))
 
                             hyperparameters = {"max_input_length": max_input_length,
                                             "tokenizer_padding_setting": tokenizer_padding_setting,
