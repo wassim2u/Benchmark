@@ -360,6 +360,7 @@ class Evaluation:
     def call_batched_w_profiler():
         pass
 
+    # Returns False if execution should be skipped or Failed
     def call_batched(self, beam_size=1, 
                     max_gen_length=128,
                     max_input_seq_length=128,
@@ -791,7 +792,7 @@ if __name__ == "__main__":
     # Extensive Experimentation with different hyperparameters
 
     # ---- Additional Hyperparameters ----
-    batch_size = 32
+    original_batch_size = 32
     metrics_args = ["sacrebleu", "spBleu", "chrf", "chrfpp", "meteor"]
 
 
@@ -811,8 +812,8 @@ if __name__ == "__main__":
         # Retrieve previous experiments. If they exist, we will not run them again.
         previous_experiments = retrieve_previous_experiments(quality_experiment_configurations_sweep)
         
-
         for model_name in quality_experiment_configurations_sweep["model_name"]:
+
             print("Model Name: " + str(model_name))
             for dataset_name in quality_experiment_configurations_sweep["dataset_name"]:
                 print("--------------------------------------------------------------------------------------------------")
@@ -854,6 +855,8 @@ if __name__ == "__main__":
                             for max_gen_length in quality_experiment_configurations_sweep["max_gen_length"]:
                                 print("Max Gen Length: " + str(max_gen_length)) # TODO: What is max_length here exactly??
                                 for beam_size in quality_experiment_configurations_sweep["beam_size"]:
+                                    # Reset batch size to the original one
+                                    batch_size = original_batch_size
                                     print("Beam Size: " + str(beam_size))
                                     text = f"Hyperparameters: model_name: {model_name}, Batch_size: {batch_size}, dataset_size: {len(valid_dataset)}, max_gen_length: {max_gen_length}, beam_size: {beam_size}, max_input_seq_length: {max_input_seq_length}, tokenizer_padding_setting: {tokenizer_padding_setting}, dataset_name= {dataset_name} \n"
                                     print(text)

@@ -591,3 +591,44 @@ OrderedDict([('active.all.allocated', 325012), ('active.all.current', 512), ('ac
 **********
 End of traceback message
 Continuing with errors...
+ERROR: Exception occured during runtime!
+Hyperparameters: model_name: facebook/nllb-200-distilled-600M, Batch_size: 32, dataset_size: all, max_gen_length: 128, beam_size: 4, max_input_seq_length: -1, tokenizer_padding_setting: pad_to_max_length, dataset_name= wmt14 
+Full traceback message:
+**********Traceback (most recent call last):
+  File "benchmark_suite.py", line 877, in <module>
+    try:
+  File "benchmark_suite.py", line 412, in call_batched
+    with torch.no_grad():
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 1611, in generate
+    return self.beam_search(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 2909, in beam_search
+    outputs = self(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/m2m_100/modeling_m2m_100.py", line 1335, in forward
+    outputs = self.model(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/m2m_100/modeling_m2m_100.py", line 1226, in forward
+    decoder_outputs = self.decoder(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "benchmark_suite.py", line 91, in timer_forward
+    result = orig_forward(cls, *args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/m2m_100/modeling_m2m_100.py", line 1088, in forward
+    layer_outputs = decoder_layer(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/m2m_100/modeling_m2m_100.py", line 486, in forward
+    hidden_states, self_attn_weights, present_key_value = self.self_attn(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/m2m_100/modeling_m2m_100.py", line 270, in forward
+    key_states = torch.cat([past_key_value[0], key_states], dim=2)
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 24.00 MiB (GPU 0; 23.69 GiB total capacity; 8.45 GiB already allocated; 17.12 MiB free; 9.09 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+OrderedDict([('active.all.allocated', 4499952), ('active.all.current', 1312), ('active.all.freed', 4498640), ('active.all.peak', 1366), ('active.large_pool.allocated', 610102), ('active.large_pool.current', 512), ('active.large_pool.freed', 609590), ('active.large_pool.peak', 516), ('active.small_pool.allocated', 3889850), ('active.small_pool.current', 800), ('active.small_pool.freed', 3889050), ('active.small_pool.peak', 852), ('active_bytes.all.allocated', 16824024627200), ('active_bytes.all.current', 9077092352), ('active_bytes.all.freed', 16814947534848), ('active_bytes.all.peak', 13369567232), ('active_bytes.large_pool.allocated', 15318374641152), ('active_bytes.large_pool.current', 9069936640), ('active_bytes.large_pool.freed', 15309304704512), ('active_bytes.large_pool.peak', 13365428224), ('active_bytes.small_pool.allocated', 1505649986048), ('active_bytes.small_pool.current', 7155712), ('active_bytes.small_pool.freed', 1505642830336), ('active_bytes.small_pool.peak', 66321920), ('allocated_bytes.all.allocated', 16824024627200), ('allocated_bytes.all.current', 9077092352), ('allocated_bytes.all.freed', 16814947534848), ('allocated_bytes.all.peak', 13369567232), ('allocated_bytes.large_pool.allocated', 15318374641152), ('allocated_bytes.large_pool.current', 9069936640), ('allocated_bytes.large_pool.freed', 15309304704512), ('allocated_bytes.large_pool.peak', 13365428224), ('allocated_bytes.small_pool.allocated', 1505649986048), ('allocated_bytes.small_pool.current', 7155712), ('allocated_bytes.small_pool.freed', 1505642830336), ('allocated_bytes.small_pool.peak', 66321920), ('allocation.all.allocated', 4499952), ('allocation.all.current', 1312), ('allocation.all.freed', 4498640), ('allocation.all.peak', 1366), ('allocation.large_pool.allocated', 610102), ('allocation.large_pool.current', 512), ('allocation.large_pool.freed', 609590), ('allocation.large_pool.peak', 516), ('allocation.small_pool.allocated', 3889850), ('allocation.small_pool.current', 800), ('allocation.small_pool.freed', 3889050), ('allocation.small_pool.peak', 852), ('inactive_split.all.allocated', 2398416), ('inactive_split.all.current', 51), ('inactive_split.all.freed', 2398365), ('inactive_split.all.peak', 127), ('inactive_split.large_pool.allocated', 266244), ('inactive_split.large_pool.current', 43), ('inactive_split.large_pool.freed', 266201), ('inactive_split.large_pool.peak', 119), ('inactive_split.small_pool.allocated', 2132172), ('inactive_split.small_pool.current', 8), ('inactive_split.small_pool.freed', 2132164), ('inactive_split.small_pool.peak', 64), ('inactive_split_bytes.all.allocated', 11378673679360), ('inactive_split_bytes.all.current', 680955904), ('inactive_split_bytes.all.freed', 11377992723456), ('inactive_split_bytes.all.peak', 2919141376), ('inactive_split_bytes.large_pool.allocated', 9760032529920), ('inactive_split_bytes.large_pool.current', 679723008), ('inactive_split_bytes.large_pool.freed', 9759352806912), ('inactive_split_bytes.large_pool.peak', 2917384192), ('inactive_split_bytes.small_pool.allocated', 1618641149440), ('inactive_split_bytes.small_pool.current', 1232896), ('inactive_split_bytes.small_pool.freed', 1618639916544), ('inactive_split_bytes.small_pool.peak', 40163328), ('max_split_size', -1), ('num_alloc_retries', 2), ('num_ooms', 1), ('oversize_allocations.allocated', 0), ('oversize_allocations.current', 0), ('oversize_allocations.freed', 0), ('oversize_allocations.peak', 0), ('oversize_segments.allocated', 0), ('oversize_segments.current', 0), ('oversize_segments.freed', 0), ('oversize_segments.peak', 0), ('requested_bytes.all.allocated', 16723898807788), ('requested_bytes.all.current', 9047887504), ('requested_bytes.all.freed', 16714850920284), ('requested_bytes.all.peak', 13320547232), ('requested_bytes.large_pool.allocated', 15218698277200), ('requested_bytes.large_pool.current', 9040787456), ('requested_bytes.large_pool.freed', 15209657489744), ('requested_bytes.large_pool.peak', 13316461568), ('requested_bytes.small_pool.allocated', 1505200530588), ('requested_bytes.small_pool.current', 7100048), ('requested_bytes.small_pool.freed', 1505193430540), ('requested_bytes.small_pool.peak', 66299249), ('reserved_bytes.all.allocated', 577652129792), ('reserved_bytes.all.current', 9758048256), ('reserved_bytes.all.freed', 567894081536), ('reserved_bytes.all.peak', 18052284416), ('reserved_bytes.large_pool.allocated', 572665102336), ('reserved_bytes.large_pool.current', 9749659648), ('reserved_bytes.large_pool.freed', 562915442688), ('reserved_bytes.large_pool.peak', 17983078400), ('reserved_bytes.small_pool.allocated', 4987027456), ('reserved_bytes.small_pool.current', 8388608), ('reserved_bytes.small_pool.freed', 4978638848), ('reserved_bytes.small_pool.peak', 69206016), ('segment.all.allocated', 12117), ('segment.all.current', 229), ('segment.all.freed', 11888), ('segment.all.peak', 394), ('segment.large_pool.allocated', 9739), ('segment.large_pool.current', 225), ('segment.large_pool.freed', 9514), ('segment.large_pool.peak', 361), ('segment.small_pool.allocated', 2378), ('segment.small_pool.current', 4), ('segment.small_pool.freed', 2374), ('segment.small_pool.peak', 33)])
+**********
+End of traceback message
+Attempting to reduce batch size and retrying...

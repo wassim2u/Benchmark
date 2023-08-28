@@ -11,3 +11,5 @@ facebook/nllb-200-distilled-600M,32,1,128,4,30,pad_to_max_length,wmt14
 facebook/nllb-200-distilled-600M,32,1,128,1,30,do_not_pad,wmt14
 facebook/nllb-200-distilled-600M,32,1,128,2,30,do_not_pad,wmt14
 facebook/nllb-200-distilled-600M,32,1,128,4,30,do_not_pad,wmt14
+facebook/nllb-200-distilled-600M,32,all,128,4,-1,pad_to_max_length,wmt14
+t5-large,32,all,128,4,15,pad_to_max_length,wmt14
