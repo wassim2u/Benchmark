@@ -11,15 +11,20 @@ from torch.utils.data import IterableDataset, Subset, DataLoader
 import pandas as pd
 import numpy as np
 import evaluate
+import os
 from archer.runtime import ArcherEngine
 import getpass
-from transformers.models.t5.modeling_t5 import T5Stack
+from transformers.models.t5.modeling_t5 import (T5Stack, T5EncoderModel)
 from transformers.models.nllb_moe.modeling_nllb_moe import (
     NllbMoeEncoder,
     NllbMoeDecoder,
 )
 from transformers.models.switch_transformers.modeling_switch_transformers import (
     SwitchTransformersStack, )
+
+from transformers.models.m2m_100.modeling_m2m_100 import (
+    M2M100Decoder, M2M100Encoder
+)
 import transformers
 
 
@@ -41,7 +46,7 @@ CONFIG = {"nvme_path": f"/mnt/{getpass.getuser()}/test-data"}
 METRIC_REPORTS_DIR_PATH = "./metric_logs/"
 
 
-def forward_decorator(orig_forward: Callable, path_to_logfile) -> Callable:
+def forward_decorator(orig_forward: Callable, path_to_logfile, id) -> Callable:
 
     @functools.wraps(orig_forward)
     def timer_forward(cls, *args, **kwargs):
@@ -55,17 +60,19 @@ def forward_decorator(orig_forward: Callable, path_to_logfile) -> Callable:
             
         else:
             layer_type = "encoder" if isinstance(cls,
-                                                 NllbMoeEncoder) else "decoder"
+                                                 NllbMoeEncoder) or isinstance(cls,M2M100Encoder) or isinstance(cls, T5EncoderModel) else "decoder"
             
         
         with open(path_to_logfile, 'a') as f:
             # f.write(f"{layer_type},{end_time - start_time}\n")
 
             writer = csv.writer(f)
-            writer.writerow([layer_type, end_time - start_time])
+            writer.writerow([id, layer_type, end_time - start_time])
+            
 
+        if layer_type == "encoder":
+            print("ENCODER IS HERE!!")
 
-        # print(f"{layer_type} forward time: {end_time - start_time}s")
         return result
 
     return timer_forward
@@ -107,6 +114,7 @@ max_length = 128
 dataset_name_map = {
     "facebook/flores" : "flores200"
 }
+
 dataset_info = {
     "wmt14": {
         "en-fr": "fr-en"
@@ -183,12 +191,14 @@ def postprocess_text(preds, labels):
 
 class Evaluation:
     def __init__(self,model_name, evaluation_dataset, dataset_name, metrics_args, hyperparameters={}, streaming=False, src_lang="en", tgt_lang="fr"):
+        
         self.model_name = model_name
         self.evaluation_dataset = evaluation_dataset
         self.dataset_name = dataset_name
         # Convert troublesome naming just in case to make creating filenames easier. If passing facebook/flores, convert to flores200 for instance
         if dataset_name in dataset_name_map.keys():
             self.dataset_name = dataset_name_map[dataset_name]
+        
         
         self.streaming = streaming
         self.src_lang = src_lang
@@ -204,6 +214,9 @@ class Evaluation:
 
         # Add functionality to original transformers forward method to log latency
         self.PATH_TO_LOG_LATENCY = METRIC_REPORTS_DIR_PATH + self.model_name + "_"+ self.dataset_name + "_latencies.csv"
+        # TODO: Hacky way to remove these attributes from file path. Make the log name conversion more robust
+        self.PATH_TO_LOG_LATENCY = self.PATH_TO_LOG_LATENCY.replace("facebook/", "")
+        self.PATH_TO_LOG_LATENCY = self.PATH_TO_LOG_LATENCY.replace("google/", "")
         self.add_latency_measurement_functionality( path_to_log_latency =  self.PATH_TO_LOG_LATENCY)
 
         
@@ -257,6 +270,7 @@ class Evaluation:
 
 
     def add_latency_measurement_functionality(self, path_to_log_latency):
+        id = 0
         if pathlib.Path(path_to_log_latency).exists():
             import os
             os.remove(path_to_log_latency)
@@ -267,17 +281,20 @@ class Evaluation:
             NllbMoeDecoder.forward)
         transformers.models.switch_transformers._old_switch_transformers_forward = (
             SwitchTransformersStack.forward)
-        
+        transformers.models.m2m_100.modeling_m2m_100._old_m2m_100_encoder_forward = (
+            M2M100Encoder.forward)
+        transformers.models.m2m_100.modeling_m2m_100._old_m2m_100_decoder_forward = (
+            M2M100Decoder.forward)
 
 
 
-
-        T5Stack.forward = forward_decorator(T5Stack.forward, path_to_log_latency)
-        NllbMoeEncoder.forward = forward_decorator(NllbMoeEncoder.forward, path_to_log_latency)
-        NllbMoeDecoder.forward = forward_decorator(NllbMoeDecoder.forward, path_to_log_latency)
+        T5Stack.forward = forward_decorator(T5Stack.forward, path_to_log_latency, id)
+        NllbMoeEncoder.forward = forward_decorator(NllbMoeEncoder.forward, path_to_log_latency, id)
+        NllbMoeDecoder.forward = forward_decorator(NllbMoeDecoder.forward, path_to_log_latency, id)
         SwitchTransformersStack.forward = forward_decorator(
-            SwitchTransformersStack.forward, path_to_log_latency)
-
+            SwitchTransformersStack.forward, path_to_log_latency, id)
+        M2M100Encoder.forward = forward_decorator(M2M100Encoder.forward, path_to_log_latency, id)
+        M2M100Decoder.forward = forward_decorator(M2M100Decoder.forward, path_to_log_latency, id)
         
 
         
@@ -338,10 +355,11 @@ class Evaluation:
                     batch_size=128, 
                     pytorch_profiling=False, save_res_util=False, save_metrics_csv=False, overwrite_csv=False):
         from transformers import DataCollatorForSeq2Seq
-            
+        print("1")
         print(len(self.evaluation_dataset))
         if self.hyperparameters.get("max_input_length") is not None and len(self.evaluation_dataset) != 1:
-
+            print("Filtering dataset by max_input_length")
+            print("Filteringg!!")
             self.evaluation_dataset = self.evaluation_dataset.filter(lambda example: (len(example["translation"]["en"])) <= self.hyperparameters["max_input_length"])
         print(len(self.evaluation_dataset))
 
@@ -350,7 +368,7 @@ class Evaluation:
             batched=True,
             remove_columns=self.evaluation_dataset.column_names,
         )
-
+        print(2)
         data_collator = DataCollatorForSeq2Seq(self.tokenizer, model=self.model)
         # TODO: should i add label_pad_token_id??
         eval_dataloader = DataLoader(
@@ -363,14 +381,14 @@ class Evaluation:
         config = AutoConfig.from_pretrained(self.model_name)
         number_of_total_encoded_tokens = 0
         number_of_total_decoded_tokens = 0
-
+        total_encoded_tokens = []
         if not pytorch_profiling:
             
             
             for batch in tqdm(eval_dataloader):
                     input_ids = batch["input_ids"].to(self.device, non_blocking=True)
                     
-
+                    print(3)
                     with torch.no_grad():
                         if  "nllb" in model_name:
                             outputs = self.model.generate(input_ids, forced_bos_token_id=self.tokenizer.lang_code_to_id["fra_Latn"], do_sample=False, max_length=max_gen_length, num_beams=beam_size)
@@ -384,10 +402,9 @@ class Evaluation:
                             outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size)
 
                     
-                    
+                    print(4)
                     labels = batch["labels"]
                     decoded_preds, decoded_labels, pred_length  = postprocess_batch(outputs, labels, self.tokenizer)
-            
                     for metric_name in self.all_metrics.keys():
                         self.all_metrics[metric_name].add_batch(predictions=decoded_preds, references=decoded_labels)
 
@@ -398,12 +415,17 @@ class Evaluation:
                     # For calculating throughput, we need to know the number of total tokens generated.
                     attention_mask = (input_ids != config.pad_token_id).to(input_ids.dtype)
                     number_of_total_encoded_tokens += torch.sum(attention_mask)
-                    number_of_total_decoded_tokens += np.sum(pred_length)
+                    number_of_total_decoded_tokens += np.sum(pred_length) #Sum of generated lengths
+                    total_encoded_tokens.append(torch.sum(attention_mask))  #Number of tokens. Will be used to calculate latency per token
+
+                    import gc
+                    gc.collect()
 
         else:
             pass
           
-                    
+
+        print(5)        
 
 
         # Export to 
@@ -411,19 +433,46 @@ class Evaluation:
 
 
         # Retrieve and process latency from log file
-        latencies_df = pd.read_csv(self.PATH_TO_LOG_LATENCY, names=["layer_type", "latency_s"]).groupby("layer_type").mean() 
-        print(latencies_df)
+        # forward_times_df = pd.read_csv(self.PATH_TO_LOG_LATENCY, names=["layer_type", "latency_s"]).groupby("layer_type").mean() 
+                
+        forward_times_df = pd.read_csv(self.PATH_TO_LOG_LATENCY, names=["layer_type", "latency_s"])
+        forward_times_df.reset_index(drop=True,inplace=True)
+        encoder_df = forward_times_df[forward_times_df['layer_type'] == "encoder"]
+        for i in range(len(total_encoded_tokens)):
+            # Calculate latency per token! Normalise the results by dividing by the number of tokens
+            encoder_df.iloc[i]["latency_s"] = (encoder_df.iloc[i]["latency_s"]) / (total_encoded_tokens[i]).cpu().numpy()
+        try:
+            print(6)
+            assert(len(total_encoded_tokens) == len(encoder_df))
+        except AssertionError as e:
+            print(e)
+            print(model_name)
+            print(self.hyperparameters)
+            print(len(total_encoded_tokens))
+            print(len(encoder_df))
+            print(encoder_df)
+            
+            raise AssertionError("Number of total encoded tokens and number of encoder forward passes are not equal. Something went wrong.")
+
+        
+        forward_times_df[forward_times_df['layer_type'] == "encoder"] = encoder_df
+        latencies_df = forward_times_df.groupby("layer_type").mean()
+        
+        # Calculate latency
+
         encoder_latency = latencies_df.loc["encoder"]["latency_s"]
         decoder_latency = latencies_df.loc["decoder"]["latency_s"]
-        print(f"Encoder latency: {encoder_latency}")
-        print(f"Decoder latency: {decoder_latency}")
+        print(f"Encoder latency (per token, averaged across all samples): {encoder_latency}")
+        print(f"Decoder latency (averaged): {decoder_latency}")
 
         # Calculate throughput
-        encoder_throughput = (number_of_total_encoded_tokens/ encoder_latency).cpu().numpy()
+        encoder_throughput = (number_of_total_encoded_tokens/ encoder_latency)
         decoder_throughput = (number_of_total_decoded_tokens/ decoder_latency)
         print(f"Encoder throughput: {encoder_throughput}")
         print(f"Decoder throughput: {decoder_throughput}")
-
+        # Delete the log file
+        os.remove(self.PATH_TO_LOG_LATENCY)
+        # Calculate Quality Metrics
         metric_results_dict = self.report_metrics(pred_lengths)
 
         if save_metrics_csv:
@@ -452,14 +501,16 @@ class Evaluation:
             # metric_results_dict["mem_footprint_percentage"] = self.dataset_size
             # metric_results_dict["mem_footprint_number"] = self.dataset_size
 
-
-            if overwrite_csv or not pathlib.Path(METRIC_REPORTS_DIR_PATH + self.model_name + "_"+ self.dataset_name +  "_metrics.csv").exists():
-                pd.DataFrame(metric_results_dict_w_params, index=[0]).to_csv(METRIC_REPORTS_DIR_PATH+ self.model_name + "_"+ self.dataset_name  + "_metrics.csv", index=False)
-                print("Created new csv file")
+            filename_csv = METRIC_REPORTS_DIR_PATH+ self.model_name + "_"+ self.dataset_name  + "_metrics.csv"
+            filename_csv = filename_csv.replace("facebook/", "")
+            filename_csv = filename_csv.replace("google/", "")
+            if overwrite_csv or not pathlib.Path(filename_csv).exists():
+                pd.DataFrame(metric_results_dict_w_params, index=[0]).to_csv(filename_csv, index=False)
+                print("Created new csv file: " + filename_csv)
                 # TODO: set overwrite to false
             else:
-                    pd.DataFrame(metric_results_dict_w_params, index=[0]).to_csv(METRIC_REPORTS_DIR_PATH + self.model_name + "_"+ self.dataset_name + "_metrics.csv", index=False, mode='a', header=False)
-                    print("Appended to csv file")
+                    pd.DataFrame(metric_results_dict_w_params, index=[0]).to_csv(filename_csv, index=False, mode='a', header=False)
+                    print("Appended to csv file: " + filename_csv)
 
 
         # # Get the resource utilization from the profiler 
@@ -628,11 +679,15 @@ def load_flores200(dataset_size):
 
 
 def retrieve_relevant_validation_dataset(dataset_name, dataset_size):
+    
     valid_dataset, valid_split = None, None
     if dataset_name == "wmt14":
         if dataset_size == "all":
             valid_split = "validation"
         else:
+            if int(dataset_size) > 3000:
+                print("You have selected a dataset size larger than the validation set. Using the entire validation set (3000).")
+            dataset_size = min(int(dataset_size), 3000)
             valid_split = "validation[:{}]".format(dataset_size)
         
         valid_dataset = load_dataset(dataset_name, "fr-en", split=valid_split)
@@ -640,6 +695,9 @@ def retrieve_relevant_validation_dataset(dataset_name, dataset_size):
         if dataset_size == "all":
             valid_split = "dev"
         else:
+            if int(dataset_size) > 997:
+                print("You have selected a dataset size larger than the validation set. Using the entire validation set (997).")
+            dataset_size = min(int(dataset_size), 997)
             valid_split = "dev[:{}]".format(dataset_size)
         
         dataset_flores200_fra = load_dataset("facebook/flores", "fra_Latn", split=valid_split)
@@ -660,7 +718,7 @@ def retrieve_relevant_validation_dataset(dataset_name, dataset_size):
 
 if __name__ == "__main__":
     # Set seed for reproducibility
-    torch.seed(42)
+    torch.manual_seed(42)
     # Extensive Experimentation with different hyperparameters
 
     # ---- Additional Hyperparameters ----
@@ -671,6 +729,7 @@ if __name__ == "__main__":
     sweep = True
     dataset_name = "wmt14"
 
+    continue_with_errors  = True
     streaming = False
     save_res_util = False
     rerun_experiments = False
@@ -682,7 +741,7 @@ if __name__ == "__main__":
 
         try:
             for dataset_name in quality_experiment_configurations_sweep["dataset_name"]:
-                print("*****************")
+                print("--------------------------------------------------------------------------------------------------")
                 print("Dataset Name: " + str(dataset_name))
                 for dataset_size in quality_experiment_configurations_sweep["dataset_size"]:
                     print("*****************")
@@ -700,7 +759,12 @@ if __name__ == "__main__":
                             for model_name in quality_experiment_configurations_sweep["model_name"]:
                                 print("Model Name: " + str(model_name))
 
-                                hyperparameters = {"max_input_length": max_input_length, "tokenizer_padding_setting": tokenizer_padding_setting}
+                                hyperparameters = {"max_input_length": max_input_length,
+                                                "tokenizer_padding_setting": tokenizer_padding_setting,
+                                                "model_name": model_name,
+                                                "dataset_name": dataset_name,
+                                                "dataset_size": dataset_size,
+                                                }
                                 
                                 evalEngine = Evaluation(model_name=model_name, 
                                                         evaluation_dataset=valid_dataset,
@@ -710,7 +774,7 @@ if __name__ == "__main__":
                                                         streaming=streaming)                    
                                 
                                 for max_gen_length in quality_experiment_configurations_sweep["max_length"]:
-                                    print("Max Length: " + str(max_length)) # TODO: What is max_length here exactly??
+                                    print("Max Gen Length: " + str(max_length)) # TODO: What is max_length here exactly??
                                     for beam_size in quality_experiment_configurations_sweep["beam_size"]:
                                         print("Beam Size: " + str(beam_size))
                                     
@@ -719,13 +783,15 @@ if __name__ == "__main__":
                                                                 beam_size=beam_size,
                                                                 max_gen_length=max_gen_length,
                                                                 save_metrics_csv=True, overwrite_csv=False)
+                                        
+
 
                         
-        except RuntimeError as e:
+        except Exception as e:
             
-            with open("./fail_logs/{}.txt".format(model_name), "w") as log:
+            with open("./fail_logs/{}.txt".format(model_name), "a") as log:
                 log.write("ERROR: Exception occured during runtime!")
-                text = f"Hyperparameters: model_name: {model_name}, Batch_size: {batch_size}, dataset_size: {dataset_size}, max_length: {max_length}, beam_size: {beam_size}"
+                text = f"Hyperparameters: model_name: {model_name}, Batch_size: {batch_size}, dataset_size: {dataset_size}, max_length: {max_length}, beam_size: {beam_size}, max_input_length: {max_input_length}, tokenizer_padding_setting: {tokenizer_padding_setting}, dataset_name= {dataset_name} \n"
                 log.write(text)
                 log.write("Full traceback message:")
                 log.write("**********")
@@ -736,6 +802,10 @@ if __name__ == "__main__":
                 if "out of memory" in str(e).lower() and batch_size !=1:  
                     log.write("Attempting to reduce batch size and retrying...")
                     batch_size = batch_size/2
+
+                elif continue_with_errors:
+                    log.write("Continuing with errors...")
+                    
                 else:
                     print("Benchmark_suite failed. Please check the logs for more information.")
                     exit(-1)
@@ -767,9 +837,9 @@ if __name__ == "__main__":
     # model_name = "facebook/nllb-moe-54b"
 
     # # dataset_name = "opus100"  # Test Dataset
-    # dataset_name = "wmt14"
+    dataset_name = "wmt14"
         # dataset_name = "wmt14"
-    dataset_name="facebook/flores"
+    # dataset_name="facebook/flores"
 
     # -------------------------
 
@@ -778,7 +848,7 @@ if __name__ == "__main__":
     # # TODO: Change to FLORES
     # # TODO: Make sure to not use the same dataset that was used to train the models!!
     # all_dataset = load_dataset(dataset_name, "fr-en", split="validation", streaming=streaming)
-    all_dataset = retrieve_relevant_validation_dataset(dataset_name, dataset_size=10)
+    all_dataset = retrieve_relevant_validation_dataset(dataset_name, dataset_size=1)
 
     # all_dataset = load_dataset(dataset_name, "fr-en", split="test", streaming=streaming)
     print(all_dataset)
@@ -789,10 +859,11 @@ if __name__ == "__main__":
 
     # exit()
 
+    hyperparameters = {"max_input_length": 10, "tokenizer_padding_setting": "no_pad_fill"}
 
-    evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming)
+    evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters)
 
-    evalEngine.call_batched(batch_size=64, save_res_util=save_res_util, save_metrics_csv=True, overwrite_csv=False)
+    evalEngine.call_batched(batch_size=32, beam_size=1,max_gen_length=128, save_res_util=save_res_util, save_metrics_csv=True, overwrite_csv=False)
 
 
 

@@ -1,7 +1,0 @@
-ERROR: Exception occured during runtime!Hyperparameters: model_name: nllb-200-distilled-600M, Batch_size: 64, dataset_size: validation[:1], max_length: 512, beam_size: 64Full traceback message:**********Traceback (most recent call last):
-  File "benchmark_suite.py", line 552, in <module>
-    evalEngine = Evaluation(model_name=model_name, evaluation_dataset=valid_dataset, dataset_name=dataset_name, metrics_args = metrics_args, streaming=streaming)
-  File "benchmark_suite.py", line 189, in __init__
-    raise NotImplementedError("Model not supported")
-NotImplementedError: Model not supported
-**********End of traceback message
