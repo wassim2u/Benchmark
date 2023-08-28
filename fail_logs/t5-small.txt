@@ -1,0 +1,422 @@
+ERROR: Exception occured during runtime!
+Hyperparameters: model_name: t5-small, Batch_size: 64, dataset_size: all, max_gen_length: 512, beam_size: 32, max_input_length: 10, tokenizer_padding_setting: pad_to_max_length, dataset_name= wmt14 
+Full traceback message:
+**********Traceback (most recent call last):
+  File "benchmark_suite.py", line 814, in <module>
+    evalEngine.call_batched(batch_size=32,
+  File "benchmark_suite.py", line 414, in call_batched
+    outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 1611, in generate
+    return self.beam_search(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 2909, in beam_search
+    outputs = self(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1720, in forward
+    decoder_outputs = self.decoder(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "benchmark_suite.py", line 91, in timer_forward
+    result = orig_forward(cls, *args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1090, in forward
+    layer_outputs = layer_module(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 693, in forward
+    self_attention_outputs = self.layer[0](
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 600, in forward
+    attention_output = self.SelfAttention(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 525, in forward
+    value_states = project(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 506, in project
+    hidden_states = torch.cat([past_key_value, hidden_states], dim=2)
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 464.00 MiB (GPU 0; 23.69 GiB total capacity; 16.62 GiB already allocated; 365.12 MiB free; 22.29 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+**********
+End of traceback message
+Attempting to reduce batch size and retrying...
+ERROR: Exception occured during runtime!
+Hyperparameters: model_name: t5-small, Batch_size: 16.0, dataset_size: all, max_gen_length: 512, beam_size: 32, max_input_length: 10, tokenizer_padding_setting: pad_to_max_length, dataset_name= wmt14 
+Full traceback message:
+**********Traceback (most recent call last):
+  File "benchmark_suite.py", line 814, in <module>
+    evalEngine.call_batched(batch_size=32,
+  File "benchmark_suite.py", line 414, in call_batched
+    outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 1611, in generate
+    return self.beam_search(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 2909, in beam_search
+    outputs = self(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1720, in forward
+    decoder_outputs = self.decoder(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "benchmark_suite.py", line 91, in timer_forward
+    result = orig_forward(cls, *args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1090, in forward
+    layer_outputs = layer_module(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 693, in forward
+    self_attention_outputs = self.layer[0](
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 600, in forward
+    attention_output = self.SelfAttention(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 525, in forward
+    value_states = project(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 506, in project
+    hidden_states = torch.cat([past_key_value, hidden_states], dim=2)
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 464.00 MiB (GPU 0; 23.69 GiB total capacity; 15.72 GiB already allocated; 381.12 MiB free; 22.27 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+**********
+End of traceback message
+Attempting to reduce batch size and retrying...
+ERROR: Exception occured during runtime!
+Hyperparameters: model_name: t5-small, Batch_size: 4.0, dataset_size: all, max_gen_length: 512, beam_size: 32, max_input_length: 10, tokenizer_padding_setting: pad_to_max_length, dataset_name= wmt14 
+Full traceback message:
+**********Traceback (most recent call last):
+  File "benchmark_suite.py", line 814, in <module>
+    evalEngine.call_batched(batch_size=32,
+  File "benchmark_suite.py", line 414, in call_batched
+    outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 1611, in generate
+    return self.beam_search(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 2909, in beam_search
+    outputs = self(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1720, in forward
+    decoder_outputs = self.decoder(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "benchmark_suite.py", line 91, in timer_forward
+    result = orig_forward(cls, *args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1090, in forward
+    layer_outputs = layer_module(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 693, in forward
+    self_attention_outputs = self.layer[0](
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 600, in forward
+    attention_output = self.SelfAttention(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 525, in forward
+    value_states = project(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 506, in project
+    hidden_states = torch.cat([past_key_value, hidden_states], dim=2)
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 464.00 MiB (GPU 0; 23.69 GiB total capacity; 16.62 GiB already allocated; 381.12 MiB free; 22.27 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+**********
+End of traceback message
+Attempting to reduce batch size and retrying...
+ERROR: Exception occured during runtime!
+Hyperparameters: model_name: t5-small, Batch_size: 1.0, dataset_size: all, max_gen_length: 512, beam_size: 32, max_input_length: 10, tokenizer_padding_setting: pad_to_max_length, dataset_name= wmt14 
+Full traceback message:
+**********Traceback (most recent call last):
+  File "benchmark_suite.py", line 814, in <module>
+    evalEngine.call_batched(batch_size=32,
+  File "benchmark_suite.py", line 414, in call_batched
+    outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 1611, in generate
+    return self.beam_search(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 2909, in beam_search
+    outputs = self(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1720, in forward
+    decoder_outputs = self.decoder(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "benchmark_suite.py", line 91, in timer_forward
+    result = orig_forward(cls, *args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1090, in forward
+    layer_outputs = layer_module(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 693, in forward
+    self_attention_outputs = self.layer[0](
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 600, in forward
+    attention_output = self.SelfAttention(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 525, in forward
+    value_states = project(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 506, in project
+    hidden_states = torch.cat([past_key_value, hidden_states], dim=2)
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 464.00 MiB (GPU 0; 23.69 GiB total capacity; 16.62 GiB already allocated; 381.12 MiB free; 22.27 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+**********
+End of traceback message
+Continuing with errors...
+ERROR: Exception occured during runtime!
+Hyperparameters: model_name: t5-small, Batch_size: 1.0, dataset_size: all, max_gen_length: 512, beam_size: 64, max_input_length: 10, tokenizer_padding_setting: pad_to_max_length, dataset_name= wmt14 
+Full traceback message:
+**********Traceback (most recent call last):
+  File "benchmark_suite.py", line 814, in <module>
+    evalEngine.call_batched(batch_size=32,
+  File "benchmark_suite.py", line 414, in call_batched
+    outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 1611, in generate
+    return self.beam_search(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 2909, in beam_search
+    outputs = self(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1720, in forward
+    decoder_outputs = self.decoder(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "benchmark_suite.py", line 91, in timer_forward
+    result = orig_forward(cls, *args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1090, in forward
+    layer_outputs = layer_module(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 693, in forward
+    self_attention_outputs = self.layer[0](
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 600, in forward
+    attention_output = self.SelfAttention(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 525, in forward
+    value_states = project(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 506, in project
+    hidden_states = torch.cat([past_key_value, hidden_states], dim=2)
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 440.00 MiB (GPU 0; 23.69 GiB total capacity; 16.17 GiB already allocated; 381.12 MiB free; 22.27 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+**********
+End of traceback message
+Continuing with errors...
+ERROR: Exception occured during runtime!
+Hyperparameters: model_name: t5-small, Batch_size: 1.0, dataset_size: all, max_gen_length: 256, beam_size: 64, max_input_length: 10, tokenizer_padding_setting: do_not_pad, dataset_name= wmt14 
+Full traceback message:
+**********Traceback (most recent call last):
+  File "benchmark_suite.py", line 814, in <module>
+    evalEngine.call_batched(batch_size=32,
+  File "benchmark_suite.py", line 414, in call_batched
+    outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 1611, in generate
+    return self.beam_search(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 2909, in beam_search
+    outputs = self(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1720, in forward
+    decoder_outputs = self.decoder(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "benchmark_suite.py", line 91, in timer_forward
+    result = orig_forward(cls, *args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1090, in forward
+    layer_outputs = layer_module(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 693, in forward
+    self_attention_outputs = self.layer[0](
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 600, in forward
+    attention_output = self.SelfAttention(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 525, in forward
+    value_states = project(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 506, in project
+    hidden_states = torch.cat([past_key_value, hidden_states], dim=2)
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 442.00 MiB (GPU 0; 23.69 GiB total capacity; 16.23 GiB already allocated; 19.12 MiB free; 22.62 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+**********
+End of traceback message
+Continuing with errors...
+WARNING! Number of total encoded tokens and number of encoder forward passes are not equal.Hyperparameters: model_name: t5-small, Batch_size: 32, dataset_size: 15, max_gen_length: 512, beam_size: 1, max_input_length: 10, tokenizer_padding_setting: do_not_pad, dataset_name= wmt14 
+ERROR: Exception occured during runtime!
+Hyperparameters: model_name: t5-small, Batch_size: 1.0, dataset_size: all, max_gen_length: 512, beam_size: 64, max_input_length: 10, tokenizer_padding_setting: do_not_pad, dataset_name= wmt14 
+Full traceback message:
+**********Traceback (most recent call last):
+  File "benchmark_suite.py", line 814, in <module>
+    evalEngine.call_batched(batch_size=32,
+  File "benchmark_suite.py", line 414, in call_batched
+    outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 1611, in generate
+    return self.beam_search(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 2909, in beam_search
+    outputs = self(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1720, in forward
+    decoder_outputs = self.decoder(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "benchmark_suite.py", line 91, in timer_forward
+    result = orig_forward(cls, *args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1090, in forward
+    layer_outputs = layer_module(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 693, in forward
+    self_attention_outputs = self.layer[0](
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 600, in forward
+    attention_output = self.SelfAttention(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 525, in forward
+    value_states = project(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 506, in project
+    hidden_states = torch.cat([past_key_value, hidden_states], dim=2)
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 448.00 MiB (GPU 0; 23.69 GiB total capacity; 16.42 GiB already allocated; 119.12 MiB free; 22.53 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+**********
+End of traceback message
+Continuing with errors...
+ERROR: Exception occured during runtime!
+Hyperparameters: model_name: t5-small, Batch_size: 1.0, dataset_size: all, max_gen_length: 128, beam_size: 64, max_input_length: 20, tokenizer_padding_setting: pad_to_max_length, dataset_name= wmt14 
+Full traceback message:
+**********Traceback (most recent call last):
+  File "benchmark_suite.py", line 814, in <module>
+    evalEngine.call_batched(batch_size=32,
+  File "benchmark_suite.py", line 414, in call_batched
+    outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 1611, in generate
+    return self.beam_search(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 2909, in beam_search
+    outputs = self(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1720, in forward
+    decoder_outputs = self.decoder(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "benchmark_suite.py", line 91, in timer_forward
+    result = orig_forward(cls, *args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1090, in forward
+    layer_outputs = layer_module(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 693, in forward
+    self_attention_outputs = self.layer[0](
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 600, in forward
+    attention_output = self.SelfAttention(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 525, in forward
+    value_states = project(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 506, in project
+    hidden_states = torch.cat([past_key_value, hidden_states], dim=2)
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 380.00 MiB (GPU 0; 23.69 GiB total capacity; 15.24 GiB already allocated; 117.12 MiB free; 22.53 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+**********
+End of traceback message
+Continuing with errors...
+WARNING! Number of total encoded tokens and number of encoder forward passes are not equal.Hyperparameters: model_name: t5-small, Batch_size: 32, dataset_size: 73, max_gen_length: 256, beam_size: 1, max_input_length: 20, tokenizer_padding_setting: pad_to_max_length, dataset_name= wmt14 
+ERROR: Exception occured during runtime!
+Hyperparameters: model_name: t5-small, Batch_size: 1.0, dataset_size: all, max_gen_length: 256, beam_size: 32, max_input_length: 20, tokenizer_padding_setting: pad_to_max_length, dataset_name= wmt14 
+Full traceback message:
+**********Traceback (most recent call last):
+  File "benchmark_suite.py", line 814, in <module>
+    evalEngine.call_batched(batch_size=32,
+  File "benchmark_suite.py", line 414, in call_batched
+    outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 1611, in generate
+    return self.beam_search(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 2909, in beam_search
+    outputs = self(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1720, in forward
+    decoder_outputs = self.decoder(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "benchmark_suite.py", line 91, in timer_forward
+    result = orig_forward(cls, *args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1090, in forward
+    layer_outputs = layer_module(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 693, in forward
+    self_attention_outputs = self.layer[0](
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 600, in forward
+    attention_output = self.SelfAttention(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 525, in forward
+    value_states = project(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 506, in project
+    hidden_states = torch.cat([past_key_value, hidden_states], dim=2)
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 448.00 MiB (GPU 0; 23.69 GiB total capacity; 16.68 GiB already allocated; 111.12 MiB free; 22.53 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+**********
+End of traceback message
+Continuing with errors...
+ERROR: Exception occured during runtime!
+Hyperparameters: model_name: t5-small, Batch_size: 1.0, dataset_size: all, max_gen_length: 256, beam_size: 64, max_input_length: 20, tokenizer_padding_setting: pad_to_max_length, dataset_name= wmt14 
+Full traceback message:
+**********Traceback (most recent call last):
+  File "benchmark_suite.py", line 814, in <module>
+    evalEngine.call_batched(batch_size=32,
+  File "benchmark_suite.py", line 414, in call_batched
+    outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 1611, in generate
+    return self.beam_search(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/generation/utils.py", line 2909, in beam_search
+    outputs = self(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1720, in forward
+    decoder_outputs = self.decoder(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "benchmark_suite.py", line 91, in timer_forward
+    result = orig_forward(cls, *args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 1090, in forward
+    layer_outputs = layer_module(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 693, in forward
+    self_attention_outputs = self.layer[0](
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 600, in forward
+    attention_output = self.SelfAttention(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1501, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 525, in forward
+    value_states = project(
+  File "/home/wassim/miniconda3/envs/archer-env2/lib/python3.8/site-packages/transformers/models/t5/modeling_t5.py", line 506, in project
+    hidden_states = torch.cat([past_key_value, hidden_states], dim=2)
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 380.00 MiB (GPU 0; 23.69 GiB total capacity; 14.50 GiB already allocated; 111.12 MiB free; 22.53 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+**********
+End of traceback message
+Benchmark_suite failed. Please check the logs for more information.

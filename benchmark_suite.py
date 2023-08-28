@@ -254,11 +254,7 @@ class Evaluation:
         # self.PATH_TO_LOG_LATENCY = self.PATH_TO_LOG_LATENCY.replace("google/", "")
         # self.add_latency_measurement_functionality( path_to_log_latency =  self.PATH_TO_LOG_LATENCY)
         
-        # If path already exists for recording latencies using decorated function, it is deleted. This is to avoid rewrapping the model twice.
-        self.PATH_TO_LOG_LATENCY = FORWARD_TIMES_FILENAMES[model_name]
-        if pathlib.Path(self.PATH_TO_LOG_LATENCY).exists():
-            import os
-            os.remove(self.PATH_TO_LOG_LATENCY)
+  
 
         
         # Define model and tokenizer
@@ -310,7 +306,8 @@ class Evaluation:
 
 
 
-   
+    def set_other_hyperparameters(self, hyperparameters):
+        self.hyperparameters = hyperparameters
 
         
     # def __call__(self, deepspeed=False, save_profile=False, export_trace_file=False, export_flame_graph=False, *args: Any, **kwds: Any) -> Any:
@@ -369,18 +366,25 @@ class Evaluation:
                     batch_size=128, 
                     pytorch_profiling=False, save_res_util=False, save_metrics_csv=False, overwrite_csv=False):
         from transformers import DataCollatorForSeq2Seq
-        print("1")
-        print(len(self.evaluation_dataset))
-        if self.hyperparameters.get("max_input_length") is not None and len(self.evaluation_dataset) != 1:
+        # If path already exists for recording latencies using decorated function, it is deleted. This is to avoid rewrapping the model twice.
+        self.PATH_TO_LOG_LATENCY = FORWARD_TIMES_FILENAMES[model_name]
+        if pathlib.Path(self.PATH_TO_LOG_LATENCY).exists():
+            os.remove(self.PATH_TO_LOG_LATENCY)
+        
+        filtered_dataset = None
+        if self.hyperparameters.get("max_input_length") is not None and self.hyperparameters["max_input_length"] != -1:
             print("Filtering dataset by max_input_length")
-            print("Filteringg!!")
-            self.evaluation_dataset = self.evaluation_dataset.filter(lambda example: (len(example["translation"]["en"])) <= self.hyperparameters["max_input_length"])
-        print(len(self.evaluation_dataset))
+            filtered_dataset= self.evaluation_dataset.filter(lambda example: (len(example["translation"]["en"])) <= self.hyperparameters["max_input_length"])
+            if len(filtered_dataset) == 0:
+                return
+        else:
+            filtered_dataset = self.evaluation_dataset
+        print(len(filtered_dataset))
 
-        tokenized_datasets = self.evaluation_dataset.map(
+        tokenized_datasets = filtered_dataset.map(
             self.preprocess_function_with_text_target,
             batched=True,
-            remove_columns=self.evaluation_dataset.column_names,
+            remove_columns=filtered_dataset.column_names,
         )
         data_collator = DataCollatorForSeq2Seq(self.tokenizer, model=self.model)
         # TODO: should i add label_pad_token_id??
@@ -400,7 +404,8 @@ class Evaluation:
             
             for batch in tqdm(eval_dataloader):
                     input_ids = batch["input_ids"].to(self.device, non_blocking=True)
-                    
+                    attention_mask = (input_ids != config.pad_token_id).to(input_ids.dtype)
+
                     with torch.no_grad():
                         if  "nllb" in model_name:
                             outputs = self.model.generate(input_ids, forced_bos_token_id=self.tokenizer.lang_code_to_id["fra_Latn"], do_sample=False, max_length=max_gen_length, num_beams=beam_size)
@@ -413,9 +418,10 @@ class Evaluation:
                             # outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=False, max_length=128, num_beams=1) # Works, for transformers.
                             outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size)
 
-                    
-                    labels = batch["labels"]
-                    decoded_preds, decoded_labels, pred_length  = postprocess_batch(outputs, labels, self.tokenizer)
+                    del input_ids
+                    decoded_preds, decoded_labels, pred_length  = postprocess_batch(outputs, batch["labels"], self.tokenizer)
+                    del outputs
+
                     for metric_name in self.all_metrics.keys():
                         self.all_metrics[metric_name].add_batch(predictions=decoded_preds, references=decoded_labels)
 
@@ -424,13 +430,18 @@ class Evaluation:
                     decoded_preds, decoded_labels = None, None
 
                     # For calculating throughput, we need to know the number of total tokens generated.
-                    attention_mask = (input_ids != config.pad_token_id).to(input_ids.dtype)
                     number_of_total_encoded_tokens += torch.sum(attention_mask)
                     number_of_total_decoded_tokens += np.sum(pred_length) #Sum of generated lengths
                     total_encoded_tokens.append(torch.sum(attention_mask))  #Number of tokens. Will be used to calculate latency per token
 
+
+
+                    del attention_mask
                     import gc
                     gc.collect()
+                    # torch.cuda.synchronize()
+                    torch.cuda.empty_cache()
+
 
         else:
             pass
@@ -439,7 +450,7 @@ class Evaluation:
         # Export to 
         # profInference.export_chrome_trace("trace.json")
 
-
+        print("Generation done!")
         # Retrieve and process latency from log file
         # forward_times_df = pd.read_csv(self.PATH_TO_LOG_LATENCY, names=["layer_type", "latency_s"]).groupby("layer_type").mean() 
                 
@@ -457,7 +468,7 @@ class Evaluation:
 
                 with open("./fail_logs/{}.txt".format(model_name.replace("facebook/","").replace("google/","")), "a") as log:
                     log.write("WARNING! Number of total encoded tokens and number of encoder forward passes are not equal.")
-                    text = f"Hyperparameters: model_name: {self.model_name}, Batch_size: {batch_size}, dataset_size: {len(self.evaluation_dataset)}, max_gen_length: {max_gen_length}, beam_size: {beam_size}, max_input_length: {self.hyperparameters['max_input_length']}, tokenizer_padding_setting: {self.hyperparameters['tokenizer_padding_setting']}, dataset_name= {self.dataset_name} \n"
+                    text = f"Hyperparameters: model_name: {self.model_name}, Batch_size: {batch_size}, dataset_size: {len(self.evaluation_dataset)}, dataset_size_after_filter_wrt_input_len: {len(filtered_dataset)} max_gen_length: {max_gen_length}, beam_size: {beam_size}, max_input_length: {self.hyperparameters['max_input_length']}, tokenizer_padding_setting: {self.hyperparameters['tokenizer_padding_setting']}, dataset_name= {self.dataset_name} \n"
                     log.write(text)
         except AssertionError as e:
             print(e)
@@ -497,6 +508,7 @@ class Evaluation:
             metric_results_dict_w_params["total_params"] = total_params
             metric_results_dict_w_params["dataset_name"] = self.dataset_name
             metric_results_dict_w_params["dataset_size"] = len(self.evaluation_dataset)
+            metric_results_dict_w_params["dataset_size_after_filter_wrt_input_len"] = len(filtered_dataset)
             metric_results_dict_w_params["src_lang"] = self.src_lang
             metric_results_dict_w_params["tgt_lang"] = self.tgt_lang
             metric_results_dict_w_params["batch_size"] = batch_size
@@ -737,13 +749,47 @@ def retrieve_relevant_validation_dataset(dataset_name, dataset_size):
     
     return valid_dataset
 
+
+def retrieve_previous_experiments(quality_experiment_configurations_sweep):
+        previous_experiments = {}
+        for model_name in quality_experiment_configurations_sweep["model_name"]:
+            for dataset_name in quality_experiment_configurations_sweep["dataset_name"]:
+
+                filename_csv = METRIC_REPORTS_DIR_PATH+ model_name + "_"+ dataset_name  + "_metrics.csv"
+                filename_csv = filename_csv.replace("facebook/", "")
+                filename_csv = filename_csv.replace("google/", "")
+                if pathlib.Path(filename_csv).exists():
+                    previous_experiments[model_name + dataset_name] = pd.read_csv(filename_csv)
+        return previous_experiments
+
+
+
+def skip_previous_experiments(previous_experiments,current_params):
+    # If the experiment has already been run, skip it.
+    if current_params["model_name"] + current_params["dataset_name"] in previous_experiments.keys():
+        # params_df = pd.DataFrame(current_params, index=[0])
+        param_cols = current_params.keys()        
+        subset_params_df =previous_experiments[current_params["model_name"] + current_params["dataset_name"]][param_cols]
+
+        # if params_df.isin(subset_params_df).all().all():
+        #     print("Experiment already run. Skipping...")
+        #     return True
+        
+
+        if len(subset_params_df.loc[(subset_params_df["dataset_size"] == int(current_params["dataset_size"])) & (subset_params_df["max_gen_length"] == int(current_params["max_gen_length"])) & (subset_params_df["beam_size"] == int(current_params["beam_size"])) & (subset_params_df["max_input_seq_length"] == int(current_params["max_input_length"])) & (subset_params_df["tokenizer_padding_setting"] == current_params["tokenizer_padding_setting"])]) > 0:
+
+
+            print("Experiment already run. Skipping...")
+            return True
+    return False
+
 if __name__ == "__main__":
     # Set seed for reproducibility
     torch.manual_seed(42)
     # Extensive Experimentation with different hyperparameters
 
     # ---- Additional Hyperparameters ----
-    batch_size = 64
+    batch_size = 32
     metrics_args = ["sacrebleu", "spBleu", "chrf", "chrfpp", "meteor"]
 
 
@@ -751,7 +797,7 @@ if __name__ == "__main__":
     dataset_name = "wmt14"
 
     continue_with_errors  = True
-    counter_error = 6
+    counter_error = 20
     streaming = False
     save_res_util = False
     rerun_experiments = False
@@ -760,15 +806,16 @@ if __name__ == "__main__":
 
 
     if sweep:
+        # Retrieve previous experiments. If they exist, we will not run them again.
+        previous_experiments = retrieve_previous_experiments(quality_experiment_configurations_sweep)
+        
+
         for model_name in quality_experiment_configurations_sweep["model_name"]:
             print("Model Name: " + str(model_name))
             for dataset_name in quality_experiment_configurations_sweep["dataset_name"]:
-                import gc
-                gc.collect()
-
-                torch.cuda.empty_cache()
                 print("--------------------------------------------------------------------------------------------------")
                 print("Dataset Name: " + str(dataset_name))
+
                 for dataset_size in quality_experiment_configurations_sweep["dataset_size"]:
                     print("*****************")
                     
@@ -776,6 +823,12 @@ if __name__ == "__main__":
                     
                     
                     print("Validation Dataset Size: " + str(len(valid_dataset)))
+
+                    evalEngine = Evaluation(model_name=model_name, 
+                        evaluation_dataset=valid_dataset,
+                        dataset_name=dataset_name, 
+                        metrics_args = metrics_args,
+                        streaming=streaming)      
                     for max_input_length in quality_experiment_configurations_sweep["max_input_length"]:
                         print("Max Input Length: " + str(max_input_length))
 
@@ -784,81 +837,98 @@ if __name__ == "__main__":
                             print("Tokenizer Padding Setting: " + str(tokenizer_padding_setting))
 
 
-                            hyperparameters = {"max_input_length": max_input_length,
+                            other_hyperparameters = {"max_input_length": max_input_length,
                                             "tokenizer_padding_setting": tokenizer_padding_setting,
-                                            "model_name": model_name,
-                                            "dataset_name": dataset_name,
-                                            "dataset_size": dataset_size,
                                             }
                             
-                            evalEngine = Evaluation(model_name=model_name, 
-                                                    evaluation_dataset=valid_dataset,
-                                                    dataset_name=dataset_name, 
-                                                    metrics_args = metrics_args,
-                                                    hyperparameters=hyperparameters,
-                                                    streaming=streaming)                    
+
+                            evalEngine.set_other_hyperparameters(other_hyperparameters)
+
+                            import gc
+                            gc.collect()
+
+                            torch.cuda.empty_cache()              
                             
                             for max_gen_length in quality_experiment_configurations_sweep["max_gen_length"]:
                                 print("Max Gen Length: " + str(max_gen_length)) # TODO: What is max_length here exactly??
                                 for beam_size in quality_experiment_configurations_sweep["beam_size"]:
                                     print("Beam Size: " + str(beam_size))
-                                    text = f"Hyperparameters: model_name: {model_name}, Batch_size: {batch_size}, dataset_size: {len(valid_dataset)}, max_gen_length: {max_gen_length}, beam_size: {beam_size}, max_input_length: {hyperparameters['max_input_length']}, tokenizer_padding_setting: {hyperparameters['tokenizer_padding_setting']}, dataset_name= {dataset_name} \n"
+                                    text = f"Hyperparameters: model_name: {model_name}, Batch_size: {batch_size}, dataset_size: {len(valid_dataset)}, max_gen_length: {max_gen_length}, beam_size: {beam_size}, max_input_length: {max_input_length}, tokenizer_padding_setting: {tokenizer_padding_setting}, dataset_name= {dataset_name} \n"
                                     print(text)
-                                    
 
-                                    # Wrapped around a while loop in order to retry if an error occurs
-                                    while True:
-                                            
-                                        try:
-                                            # If experiment runs successfully, break out of the loop and continue with the next experiment.
-                                            evalEngine.call_batched(batch_size=32,
-                                                                save_res_util=save_res_util,
-                                                                beam_size=beam_size,
-                                                                max_gen_length=max_gen_length,
-                                                                save_metrics_csv=True, overwrite_csv=False)
-                                        
-                                            break
-                                        except Exception as e:
-                                            fail_logs_dir = "./fail_logs/"
-                                            fail_logs_file = fail_logs_dir + model_name + ".txt".replace("facebook/", "").replace("google/", "")
-                                            with open(fail_logs_file, "a") as log:
-                                                log.write("ERROR: Exception occured during runtime!\n")
-                                                print("ERROR: Exception occured during runtime!")
-                                                print(e)
-
-                                                text = f"Hyperparameters: model_name: {model_name}, Batch_size: {batch_size}, dataset_size: {dataset_size}, max_gen_length: {max_gen_length}, beam_size: {beam_size}, max_input_length: {max_input_length}, tokenizer_padding_setting: {tokenizer_padding_setting}, dataset_name= {dataset_name} \n"
-                                                log.write(text)
-                                                log.write("Full traceback message:\n")
-                                                log.write("**********")
-                                                traceback.print_exc(file=log)
-                                                log.write("**********\n")
-                                                log.write("End of traceback message\n")
-
-                                                # IF it is an out of memory issue, we empty cache and retry with a smaller batch size.
-                                                if "out of memory" in str(e).lower() and batch_size !=1:  
-                                                    log.write("Attempting to reduce batch size and retrying...\n")
-                                                    print("Attempting to reduce batch size and retrying...")
-                                                    gc.collect()
-                                                    torch.cuda.empty_cache()
-                                                    if batch_size > 2:
-                                                        batch_size = batch_size/2
-                                                    batch_size = batch_size/2
-
+                                    current_params = {"model_name": model_name,
+                                                    "batch_size": batch_size,
+                                                    "dataset_size": len(valid_dataset),
+                                                    "max_gen_length": max_gen_length,
+                                                    "beam_size": beam_size,
+                                                    "max_input_length": max_input_length,
+                                                    "tokenizer_padding_setting": tokenizer_padding_setting,
+                                                    "dataset_name": dataset_name,
+                                                    }
                                                     
+                                    # if the experiment has already been run, skip it.
+                                    if skip_previous_experiments(previous_experiments,current_params):
+                                        continue
 
-                                                # If not out of memory issue, break out of the loop and continue with the next experiment.
-                                                # Counter error added in order to give the user the option to continue with errors.
-                                                elif continue_with_errors and counter_error >0:
-                                                    log.write("Continuing with errors...\n")
-                                                    print("Continuing with errors...")
-                                                    counter_error -=1
-                                                    break
+                                        
+                                    try:
+                                        # If experiment runs successfully, break out of the loop and continue with the next experiment.
+                                        evalEngine.call_batched(batch_size=batch_size,
+                                                            save_res_util=save_res_util,
+                                                            beam_size=beam_size,
+                                                            max_gen_length=max_gen_length,
+                                                            save_metrics_csv=True, overwrite_csv=False)
+                                
+                                    except Exception as e:
+                                        fail_logs_dir = "./fail_logs/"
+                                        fail_logs_file = (fail_logs_dir + model_name + ".txt").replace("facebook/", "").replace("google/", "")
+                                        failed_experiments_csv = (fail_logs_dir + "failed_experiments.csv").replace("facebook/", "").replace("google/", "")
+                                        
+                                        with open(failed_experiments_csv, "a") as f:
+                                            csv_writer = csv.writer(f)
+                                            csv_writer.writerow([model_name, batch_size, dataset_size, max_gen_length, beam_size, max_input_length, tokenizer_padding_setting, dataset_name])
+
+                                        with open(fail_logs_file, "a") as log:
+                                            log.write("ERROR: Exception occured during runtime!\n")
+                                            print("ERROR: Exception occured during runtime!")
+                                            print(e)
+
+                                            text = f"Hyperparameters: model_name: {model_name}, Batch_size: {batch_size}, dataset_size: {dataset_size}, max_gen_length: {max_gen_length}, beam_size: {beam_size}, max_input_length: {max_input_length}, tokenizer_padding_setting: {tokenizer_padding_setting}, dataset_name= {dataset_name} \n"
+                                            log.write(text)
+                                            log.write("Full traceback message:\n")
+                                            log.write("**********")
+                                            traceback.print_exc(file=log)
+                                            log.write(str(torch.cuda.memory_stats(device=None)) + "\n")
+                                            log.write("**********\n")
+                                            log.write("End of traceback message\n")
+
+
+
+                                            # IF it is an out of memory issue, we empty cache and retry with a smaller batch size.
+                                            if "out of memory" in str(e).lower() and batch_size !=1:  
+                                                log.write("Attempting to reduce batch size and retrying...\n")
+                                                print("Attempting to reduce batch size and retrying...")
+                                                gc.collect()
+                                                torch.cuda.empty_cache()
+                                                if batch_size > 2:
+                                                    batch_size = batch_size/2
+                                                batch_size = batch_size/2
+                                                batch_size = int(batch_size)
+
                                                 
-                                                else:
-                                                    log.write("Benchmark_suite failed. Please check the logs for more information.")
-                                                    print("Benchmark_suite failed. Please check the logs for more information.")
-                                                    exit(-1)
+
+                                            # If not out of memory issue, break out of the loop and continue with the next experiment.
+                                            # Counter error added in order to give the user the option to continue with errors.
+                                            elif continue_with_errors and counter_error >0:
+                                                log.write("Continuing with errors...\n")
+                                                print("Continuing with errors...")
+                                                counter_error -=1
                                             
+                                            else:
+                                                log.write("Benchmark_suite failed. Please check the logs for more information.")
+                                                print("Benchmark_suite failed. Please check the logs for more information.")
+                                                exit(-1)
+                                        
 
 
     
