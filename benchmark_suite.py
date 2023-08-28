@@ -45,8 +45,45 @@ import pathlib
 CONFIG = {"nvme_path": f"/mnt/{getpass.getuser()}/test-data"}
 METRIC_REPORTS_DIR_PATH = "./metric_logs/"
 
+FORWARD_TIMES_FILENAMES = {
+    "t5-small" : METRIC_REPORTS_DIR_PATH + "t5_latencies.csv",
+    "t5-base" : METRIC_REPORTS_DIR_PATH + "t5_latencies.csv",
+    "t5-large": METRIC_REPORTS_DIR_PATH + "t5_latencies.csv",
+    "nllb-200-1.3B" : METRIC_REPORTS_DIR_PATH + "nllb_latencies.csv",
+    "nllb-200-distilled-600M" : METRIC_REPORTS_DIR_PATH + "nllb_latencies.csv",
+    "nllb-moe-54b" : METRIC_REPORTS_DIR_PATH + "nllb-moe_latencies.csv",
+    "google/switch-base-128" : METRIC_REPORTS_DIR_PATH + "switch_latencies.csv",
+    "facebook/nllb-200-distilled-1.3B" : METRIC_REPORTS_DIR_PATH + "nllb_latencies.csv",
+    "facebook/nllb-200-distilled-600M" : METRIC_REPORTS_DIR_PATH + "nllb_latencies.csv",
+    "facebook/nllb-200-1.3B" : METRIC_REPORTS_DIR_PATH + "nllb_latencies.csv",
+}
 
-def forward_decorator(orig_forward: Callable, path_to_logfile, id) -> Callable:
+def add_latency_measurement_functionality():
+  
+    transformers.models.t5.modeling_t5._old_t5_forward = T5Stack.forward
+    transformers.models.nllb_moe.modeling_nllb_moe._old_nllb_moe_encoder_forward = (
+        NllbMoeEncoder.forward)
+    transformers.models.nllb_moe.modeling_nllb_moe._old_nllb_moe_decoder_forward = (
+        NllbMoeDecoder.forward)
+    transformers.models.switch_transformers._old_switch_transformers_forward = (
+        SwitchTransformersStack.forward)
+    transformers.models.m2m_100.modeling_m2m_100._old_m2m_100_encoder_forward = (
+        M2M100Encoder.forward)
+    transformers.models.m2m_100.modeling_m2m_100._old_m2m_100_decoder_forward = (
+        M2M100Decoder.forward)
+
+
+
+    T5Stack.forward = forward_decorator(T5Stack.forward, METRIC_REPORTS_DIR_PATH + "t5_latencies.csv")
+    NllbMoeEncoder.forward = forward_decorator(NllbMoeEncoder.forward, METRIC_REPORTS_DIR_PATH + "nllb-moe_latencies.csv")
+    NllbMoeDecoder.forward = forward_decorator(NllbMoeDecoder.forward,  METRIC_REPORTS_DIR_PATH + "nllb-moe_latencies.csv")
+    SwitchTransformersStack.forward = forward_decorator(
+        SwitchTransformersStack.forward, METRIC_REPORTS_DIR_PATH + "switch_latencies.csv")
+    M2M100Encoder.forward = forward_decorator(M2M100Encoder.forward, METRIC_REPORTS_DIR_PATH + "nllb_latencies.csv")
+    M2M100Decoder.forward = forward_decorator(M2M100Decoder.forward, METRIC_REPORTS_DIR_PATH +  "nllb_latencies.csv")
+    
+
+def forward_decorator(orig_forward: Callable, path_to_logfile) -> Callable:
 
     @functools.wraps(orig_forward)
     def timer_forward(cls, *args, **kwargs):
@@ -67,18 +104,16 @@ def forward_decorator(orig_forward: Callable, path_to_logfile, id) -> Callable:
             # f.write(f"{layer_type},{end_time - start_time}\n")
 
             writer = csv.writer(f)
-            writer.writerow([id, layer_type, end_time - start_time])
+            writer.writerow([layer_type, end_time - start_time])
             
 
-        if layer_type == "encoder":
-            print("ENCODER IS HERE!!")
 
         return result
 
     return timer_forward
 
-
-
+# Add functionality to original transformers forward method to log latency
+add_latency_measurement_functionality()
 
 
 source_lang = "en"
@@ -107,7 +142,7 @@ metrics_name_map_dict = {
 # clf_metrics = evaluate.combine(["sacrebleu", "sacrebleu", "chrf", "chrf", "comet", "rouge", "meteor",])
 
 
-max_length = 128
+# max_length = 128
 
 # max_source_length = 1024
 
@@ -213,11 +248,17 @@ class Evaluation:
         self.all_metrics = self.load_relevant_metrics(metrics_args)
 
         # Add functionality to original transformers forward method to log latency
-        self.PATH_TO_LOG_LATENCY = METRIC_REPORTS_DIR_PATH + self.model_name + "_"+ self.dataset_name + "_latencies.csv"
-        # TODO: Hacky way to remove these attributes from file path. Make the log name conversion more robust
-        self.PATH_TO_LOG_LATENCY = self.PATH_TO_LOG_LATENCY.replace("facebook/", "")
-        self.PATH_TO_LOG_LATENCY = self.PATH_TO_LOG_LATENCY.replace("google/", "")
-        self.add_latency_measurement_functionality( path_to_log_latency =  self.PATH_TO_LOG_LATENCY)
+        # self.PATH_TO_LOG_LATENCY = METRIC_REPORTS_DIR_PATH + self.model_name + "_"+ self.dataset_name + "_latencies.csv"
+        # # TODO: Hacky way to remove these attributes from file path. Make the log name conversion more robust
+        # self.PATH_TO_LOG_LATENCY = self.PATH_TO_LOG_LATENCY.replace("facebook/", "")
+        # self.PATH_TO_LOG_LATENCY = self.PATH_TO_LOG_LATENCY.replace("google/", "")
+        # self.add_latency_measurement_functionality( path_to_log_latency =  self.PATH_TO_LOG_LATENCY)
+        
+        # If path already exists for recording latencies using decorated function, it is deleted. This is to avoid rewrapping the model twice.
+        self.PATH_TO_LOG_LATENCY = FORWARD_TIMES_FILENAMES[model_name]
+        if pathlib.Path(self.PATH_TO_LOG_LATENCY).exists():
+            import os
+            os.remove(self.PATH_TO_LOG_LATENCY)
 
         
         # Define model and tokenizer
@@ -269,33 +310,7 @@ class Evaluation:
 
 
 
-    def add_latency_measurement_functionality(self, path_to_log_latency):
-        id = 0
-        if pathlib.Path(path_to_log_latency).exists():
-            import os
-            os.remove(path_to_log_latency)
-        transformers.models.t5.modeling_t5._old_t5_forward = T5Stack.forward
-        transformers.models.nllb_moe.modeling_nllb_moe._old_nllb_moe_encoder_forward = (
-            NllbMoeEncoder.forward)
-        transformers.models.nllb_moe.modeling_nllb_moe._old_nllb_moe_decoder_forward = (
-            NllbMoeDecoder.forward)
-        transformers.models.switch_transformers._old_switch_transformers_forward = (
-            SwitchTransformersStack.forward)
-        transformers.models.m2m_100.modeling_m2m_100._old_m2m_100_encoder_forward = (
-            M2M100Encoder.forward)
-        transformers.models.m2m_100.modeling_m2m_100._old_m2m_100_decoder_forward = (
-            M2M100Decoder.forward)
-
-
-
-        T5Stack.forward = forward_decorator(T5Stack.forward, path_to_log_latency, id)
-        NllbMoeEncoder.forward = forward_decorator(NllbMoeEncoder.forward, path_to_log_latency, id)
-        NllbMoeDecoder.forward = forward_decorator(NllbMoeDecoder.forward, path_to_log_latency, id)
-        SwitchTransformersStack.forward = forward_decorator(
-            SwitchTransformersStack.forward, path_to_log_latency, id)
-        M2M100Encoder.forward = forward_decorator(M2M100Encoder.forward, path_to_log_latency, id)
-        M2M100Decoder.forward = forward_decorator(M2M100Decoder.forward, path_to_log_latency, id)
-        
+   
 
         
     # def __call__(self, deepspeed=False, save_profile=False, export_trace_file=False, export_flame_graph=False, *args: Any, **kwds: Any) -> Any:
@@ -351,7 +366,6 @@ class Evaluation:
     def call_batched(self, beam_size=1, 
                     max_gen_length=128,
                     max_input_length=128,
-                    tokenizer_padding_setting="pad_to_max_length", 
                     batch_size=128, 
                     pytorch_profiling=False, save_res_util=False, save_metrics_csv=False, overwrite_csv=False):
         from transformers import DataCollatorForSeq2Seq
@@ -368,7 +382,6 @@ class Evaluation:
             batched=True,
             remove_columns=self.evaluation_dataset.column_names,
         )
-        print(2)
         data_collator = DataCollatorForSeq2Seq(self.tokenizer, model=self.model)
         # TODO: should i add label_pad_token_id??
         eval_dataloader = DataLoader(
@@ -388,7 +401,6 @@ class Evaluation:
             for batch in tqdm(eval_dataloader):
                     input_ids = batch["input_ids"].to(self.device, non_blocking=True)
                     
-                    print(3)
                     with torch.no_grad():
                         if  "nllb" in model_name:
                             outputs = self.model.generate(input_ids, forced_bos_token_id=self.tokenizer.lang_code_to_id["fra_Latn"], do_sample=False, max_length=max_gen_length, num_beams=beam_size)
@@ -402,7 +414,6 @@ class Evaluation:
                             outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size)
 
                     
-                    print(4)
                     labels = batch["labels"]
                     decoded_preds, decoded_labels, pred_length  = postprocess_batch(outputs, labels, self.tokenizer)
                     for metric_name in self.all_metrics.keys():
@@ -425,9 +436,6 @@ class Evaluation:
             pass
           
 
-        print(5)        
-
-
         # Export to 
         # profInference.export_chrome_trace("trace.json")
 
@@ -442,8 +450,15 @@ class Evaluation:
             # Calculate latency per token! Normalise the results by dividing by the number of tokens
             encoder_df.iloc[i]["latency_s"] = (encoder_df.iloc[i]["latency_s"]) / (total_encoded_tokens[i]).cpu().numpy()
         try:
-            print(6)
-            assert(len(total_encoded_tokens) == len(encoder_df))
+            # TODO: Potential bug: Check why this fails for t5-small
+            # assert(len(total_encoded_tokens) == len(encoder_df))
+            if (len(total_encoded_tokens) != len(encoder_df)):
+                print("WARNING! Number of total encoded tokens and number of encoder forward passes are not equal.")
+
+                with open("./fail_logs/{}.txt".format(model_name.replace("facebook/","").replace("google/","")), "a") as log:
+                    log.write("WARNING! Number of total encoded tokens and number of encoder forward passes are not equal.")
+                    text = f"Hyperparameters: model_name: {self.model_name}, Batch_size: {batch_size}, dataset_size: {len(self.evaluation_dataset)}, max_gen_length: {max_gen_length}, beam_size: {beam_size}, max_input_length: {self.hyperparameters['max_input_length']}, tokenizer_padding_setting: {self.hyperparameters['tokenizer_padding_setting']}, dataset_name= {self.dataset_name} \n"
+                    log.write(text)
         except AssertionError as e:
             print(e)
             print(model_name)
@@ -466,7 +481,7 @@ class Evaluation:
         print(f"Decoder latency (averaged): {decoder_latency}")
 
         # Calculate throughput
-        encoder_throughput = (number_of_total_encoded_tokens/ encoder_latency)
+        encoder_throughput = (number_of_total_encoded_tokens/ encoder_latency).cpu().numpy()
         decoder_throughput = (number_of_total_decoded_tokens/ decoder_latency)
         print(f"Encoder throughput: {encoder_throughput}")
         print(f"Decoder throughput: {decoder_throughput}")
@@ -487,8 +502,8 @@ class Evaluation:
             metric_results_dict_w_params["batch_size"] = batch_size
             metric_results_dict_w_params["beam_size"] = beam_size
             metric_results_dict_w_params["max_gen_length"] = max_gen_length
-            metric_results_dict_w_params["max_input_seq_length"] = max_input_length # TODO: Report on different sentence lengths.
-            metric_results_dict_w_params["tokenizer_padding_setting"] = tokenizer_padding_setting # TODO: Report on different sentence lengths.
+            metric_results_dict_w_params["max_input_seq_length"] = self.hyperparameters["max_input_length"] # TODO: Report on different sentence lengths.
+            metric_results_dict_w_params["tokenizer_padding_setting"] = self.hyperparameters["tokenizer_padding_setting"] # TODO: Report on different sentence lengths.
 
             metric_results_dict_w_params.update(metric_results_dict)
             metric_results_dict_w_params["encoder_latency_s"] = encoder_latency
@@ -603,6 +618,8 @@ class Evaluation:
 
 
         padding_param = self.hyperparameters.get("tokenizer_padding_setting") 
+        # print("PRINT PADDING PARAM")
+        # print(padding_param)
         model_inputs = None
 
         if padding_param is not None and  padding_param == "do_not_pad":
@@ -610,11 +627,13 @@ class Evaluation:
             model_inputs = self.tokenizer(
                 inputs, text_target=targets,  truncation=True, padding="do_not_pad"
             )
+            # print("DO NOT PAD")
         else:
             # Will pad to what is set in max_length
             model_inputs = self.tokenizer(
                 inputs, text_target=targets, max_length=512, truncation=True
             )
+            # print("PAD")
         return model_inputs
 
     
@@ -634,7 +653,7 @@ class Evaluation:
     
 
     # TODO: pass kwargs instead. make it so that any metric can be computed
-    def report_metrics(self, pred_lengths):
+    def report_metrics(self, pred_lengths, print_terminal=True):
         print("Reporting Quality Metrics: ")
         metric_results_dict = {}
         for metric_name, metric_module in self.all_metrics.items():
@@ -657,15 +676,17 @@ class Evaluation:
                 print(metric_name)
                 raise NotImplementedError("Metric not supported, or may be written incorrectly")
 
-            print(f"Full {metric_name} metric report for this batch: {result}")
+            if print_terminal:
+                print(f"Full {metric_name} metric report for this batch: {result}")
 
             metric_results_dict[metric_name] =score
 
 
         gen_len = np.mean(pred_lengths)
-        print(f"gen_len: {gen_len}")
+        if print_terminal:
+            print(f"gen_len: {gen_len}")
 
-        print("**************")
+            print("**************")
 
         metric_results_dict["gen_len"] = gen_len
         return metric_results_dict
@@ -730,6 +751,7 @@ if __name__ == "__main__":
     dataset_name = "wmt14"
 
     continue_with_errors  = True
+    counter_error = 6
     streaming = False
     save_res_util = False
     rerun_experiments = False
@@ -739,79 +761,109 @@ if __name__ == "__main__":
 
     if sweep:
 
-        try:
-            for dataset_name in quality_experiment_configurations_sweep["dataset_name"]:
-                print("--------------------------------------------------------------------------------------------------")
-                print("Dataset Name: " + str(dataset_name))
-                for dataset_size in quality_experiment_configurations_sweep["dataset_size"]:
-                    print("*****************")
-                    
-                    valid_dataset = retrieve_relevant_validation_dataset(dataset_name, dataset_size)
-                    
-                    
-                    print("Validation Dataset Size: " + str(len(valid_dataset)))
-                    for max_input_length in quality_experiment_configurations_sweep["max_input_length"]:
-                        print("Max Input Length: " + str(max_input_length))
+        for dataset_name in quality_experiment_configurations_sweep["dataset_name"]:
+            import gc
+            gc.collect()
 
-                        for tokenizer_padding_setting in quality_experiment_configurations_sweep["tokenizer_padding_setting"]:
+            torch.cuda.empty_cache()
+            print("--------------------------------------------------------------------------------------------------")
+            print("Dataset Name: " + str(dataset_name))
+            for dataset_size in quality_experiment_configurations_sweep["dataset_size"]:
+                print("*****************")
+                
+                valid_dataset = retrieve_relevant_validation_dataset(dataset_name, dataset_size)
+                
+                
+                print("Validation Dataset Size: " + str(len(valid_dataset)))
+                for max_input_length in quality_experiment_configurations_sweep["max_input_length"]:
+                    print("Max Input Length: " + str(max_input_length))
 
-                            print("Tokenizer Padding Setting: " + str(tokenizer_padding_setting))
-                            for model_name in quality_experiment_configurations_sweep["model_name"]:
-                                print("Model Name: " + str(model_name))
+                    for tokenizer_padding_setting in quality_experiment_configurations_sweep["tokenizer_padding_setting"]:
 
-                                hyperparameters = {"max_input_length": max_input_length,
-                                                "tokenizer_padding_setting": tokenizer_padding_setting,
-                                                "model_name": model_name,
-                                                "dataset_name": dataset_name,
-                                                "dataset_size": dataset_size,
-                                                }
-                                
-                                evalEngine = Evaluation(model_name=model_name, 
-                                                        evaluation_dataset=valid_dataset,
-                                                        dataset_name=dataset_name, 
-                                                        metrics_args = metrics_args,
-                                                        hyperparameters=hyperparameters,
-                                                        streaming=streaming)                    
-                                
-                                for max_gen_length in quality_experiment_configurations_sweep["max_length"]:
-                                    print("Max Gen Length: " + str(max_length)) # TODO: What is max_length here exactly??
-                                    for beam_size in quality_experiment_configurations_sweep["beam_size"]:
-                                        print("Beam Size: " + str(beam_size))
+                        print("Tokenizer Padding Setting: " + str(tokenizer_padding_setting))
+                        for model_name in quality_experiment_configurations_sweep["model_name"]:
+                            print("Model Name: " + str(model_name))
+
+                            hyperparameters = {"max_input_length": max_input_length,
+                                            "tokenizer_padding_setting": tokenizer_padding_setting,
+                                            "model_name": model_name,
+                                            "dataset_name": dataset_name,
+                                            "dataset_size": dataset_size,
+                                            }
+                            
+                            evalEngine = Evaluation(model_name=model_name, 
+                                                    evaluation_dataset=valid_dataset,
+                                                    dataset_name=dataset_name, 
+                                                    metrics_args = metrics_args,
+                                                    hyperparameters=hyperparameters,
+                                                    streaming=streaming)                    
+                            
+                            for max_gen_length in quality_experiment_configurations_sweep["max_gen_length"]:
+                                print("Max Gen Length: " + str(max_gen_length)) # TODO: What is max_length here exactly??
+                                for beam_size in quality_experiment_configurations_sweep["beam_size"]:
+                                    print("Beam Size: " + str(beam_size))
+                                    text = f"Hyperparameters: model_name: {model_name}, Batch_size: {batch_size}, dataset_size: {len(valid_dataset)}, max_gen_length: {max_gen_length}, beam_size: {beam_size}, max_input_length: {hyperparameters['max_input_length']}, tokenizer_padding_setting: {hyperparameters['tokenizer_padding_setting']}, dataset_name= {dataset_name} \n"
+                                    print(text)
                                     
-                                        evalEngine.call_batched(batch_size=32,
+
+                                    # Wrapped around a while loop in order to retry if an error occurs
+                                    while True:
+                                            
+                                        try:
+                                            # If experiment runs successfully, break out of the loop and continue with the next experiment.
+                                            evalEngine.call_batched(batch_size=32,
                                                                 save_res_util=save_res_util,
                                                                 beam_size=beam_size,
                                                                 max_gen_length=max_gen_length,
                                                                 save_metrics_csv=True, overwrite_csv=False)
                                         
+                                            break
+                                        except Exception as e:
+                                            fail_logs_dir = "./fail_logs/"
+                                            fail_logs_file = fail_logs_dir + model_name + ".txt".replace("facebook/", "").replace("google/", "")
+                                            with open(fail_logs_file, "a") as log:
+                                                log.write("ERROR: Exception occured during runtime!\n")
+                                                print("ERROR: Exception occured during runtime!")
+                                                print(e)
+
+                                                text = f"Hyperparameters: model_name: {model_name}, Batch_size: {batch_size}, dataset_size: {dataset_size}, max_gen_length: {max_gen_length}, beam_size: {beam_size}, max_input_length: {max_input_length}, tokenizer_padding_setting: {tokenizer_padding_setting}, dataset_name= {dataset_name} \n"
+                                                log.write(text)
+                                                log.write("Full traceback message:\n")
+                                                log.write("**********")
+                                                traceback.print_exc(file=log)
+                                                log.write("**********\n")
+                                                log.write("End of traceback message\n")
+
+                                                # IF it is an out of memory issue, we empty cache and retry with a smaller batch size.
+                                                if "out of memory" in str(e).lower() and batch_size !=1:  
+                                                    log.write("Attempting to reduce batch size and retrying...\n")
+                                                    print("Attempting to reduce batch size and retrying...")
+                                                    gc.collect()
+                                                    torch.cuda.empty_cache()
+                                                    if batch_size > 2:
+                                                        batch_size = batch_size/2
+                                                    batch_size = batch_size/2
+
+                                                    
+
+                                                # If not out of memory issue, break out of the loop and continue with the next experiment.
+                                                # Counter error added in order to give the user the option to continue with errors.
+                                                elif continue_with_errors and counter_error >0:
+                                                    log.write("Continuing with errors...\n")
+                                                    print("Continuing with errors...")
+                                                    counter_error -=1
+                                                    break
+                                                
+                                                else:
+                                                    log.write("Benchmark_suite failed. Please check the logs for more information.")
+                                                    print("Benchmark_suite failed. Please check the logs for more information.")
+                                                    exit(-1)
+                                            
 
 
-                        
-        except Exception as e:
-            
-            with open("./fail_logs/{}.txt".format(model_name), "a") as log:
-                log.write("ERROR: Exception occured during runtime!")
-                text = f"Hyperparameters: model_name: {model_name}, Batch_size: {batch_size}, dataset_size: {dataset_size}, max_length: {max_length}, beam_size: {beam_size}, max_input_length: {max_input_length}, tokenizer_padding_setting: {tokenizer_padding_setting}, dataset_name= {dataset_name} \n"
-                log.write(text)
-                log.write("Full traceback message:")
-                log.write("**********")
-                traceback.print_exc(file=log)
-                log.write("**********")
-                log.write("End of traceback message")
-
-                if "out of memory" in str(e).lower() and batch_size !=1:  
-                    log.write("Attempting to reduce batch size and retrying...")
-                    batch_size = batch_size/2
-
-                elif continue_with_errors:
-                    log.write("Continuing with errors...")
-                    
-                else:
-                    print("Benchmark_suite failed. Please check the logs for more information.")
-                    exit(-1)
-            
+    
+    if sweep:
         exit()
-            
 
     
     #  ------------------------------------------
@@ -859,11 +911,9 @@ if __name__ == "__main__":
 
     # exit()
 
-    hyperparameters = {"max_input_length": 10, "tokenizer_padding_setting": "no_pad_fill"}
+    hyperparameters = {"max_input_length": 10, "tokenizer_padding_setting": "do_not_pad"}
 
     evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters)
 
-    evalEngine.call_batched(batch_size=32, beam_size=1,max_gen_length=128, save_res_util=save_res_util, save_metrics_csv=True, overwrite_csv=False)
-
-
-
+    # evalEngine.call_batched(batch_size=32, beam_size=64,max_gen_length=512, save_res_util=save_res_util, save_metrics_csv=True, overwrite_csv=False)
+    # evalEngine.call_batched(batch_size=32, beam_size=64,max_gen_length=64, save_res_util=save_res_util, save_metrics_csv=True, overwrite_csv=False)

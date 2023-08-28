@@ -9,12 +9,12 @@ speed_inference_metric_experiments = {
 
 quality_experiment_configurations_sweep = {
     "dataset_size" : ["1","all"],
-    "max_length" : [64,128,256,512], # Maximum generation sequence length
+    "max_gen_length" : [64,128,256,512], # Maximum generation sequence length
     "max_input_length": [10,20,30,50,None], # Set to None for no limit
     "beam_size" : [1,2,4,8,16,32,64],
     "model_name" : ["t5-small", "t5-base", "t5-large" , "facebook/nllb-200-distilled-600M", "facebook/nllb-200-1.3B"],
     "dataset_name" : ["wmt14", "flores200"],
-    "tokenizer_padding_setting" : ["pad_to_max_length","no_pad_fill"],
+    "tokenizer_padding_setting" : ["pad_to_max_length","do_not_pad"],
     # "batch_size" : [1,32,64,128,256]
 }
 
