@@ -374,10 +374,11 @@ class Evaluation:
         filtered_dataset = None
         if self.hyperparameters.get("max_input_seq_length") is not None and self.hyperparameters["max_input_seq_length"] != -1:
             print("Filtering dataset by max_input_seq_length")
-            filtered_dataset= self.evaluation_dataset.filter(lambda example: (len(example["translation"]["en"])).split(" ") <= self.hyperparameters["max_input_seq_length"])
+            filtered_dataset= self.evaluation_dataset.filter(lambda example: (len(example["translation"]["en"].split(" "))) <= self.hyperparameters["max_input_seq_length"])
 
             if len(filtered_dataset) == 0:
-                return
+                print("Skip this experiment because dataset is empty after filtering by max_input_seq_length")
+                return False
         else:
             filtered_dataset = self.evaluation_dataset
         print(len(filtered_dataset))
