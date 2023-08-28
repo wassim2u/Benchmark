@@ -362,7 +362,7 @@ class Evaluation:
 
     def call_batched(self, beam_size=1, 
                     max_gen_length=128,
-                    max_input_length=128,
+                    max_input_seq_length=128,
                     batch_size=128, 
                     pytorch_profiling=False, save_res_util=False, save_metrics_csv=False, overwrite_csv=False):
         from transformers import DataCollatorForSeq2Seq
@@ -372,9 +372,10 @@ class Evaluation:
             os.remove(self.PATH_TO_LOG_LATENCY)
         
         filtered_dataset = None
-        if self.hyperparameters.get("max_input_length") is not None and self.hyperparameters["max_input_length"] != -1:
-            print("Filtering dataset by max_input_length")
-            filtered_dataset= self.evaluation_dataset.filter(lambda example: (len(example["translation"]["en"])) <= self.hyperparameters["max_input_length"])
+        if self.hyperparameters.get("max_input_seq_length") is not None and self.hyperparameters["max_input_seq_length"] != -1:
+            print("Filtering dataset by max_input_seq_length")
+            filtered_dataset= self.evaluation_dataset.filter(lambda example: (len(example["translation"]["en"])).split(" ") <= self.hyperparameters["max_input_seq_length"])
+
             if len(filtered_dataset) == 0:
                 return
         else:
@@ -468,7 +469,7 @@ class Evaluation:
 
                 with open("./fail_logs/{}.txt".format(model_name.replace("facebook/","").replace("google/","")), "a") as log:
                     log.write("WARNING! Number of total encoded tokens and number of encoder forward passes are not equal.")
-                    text = f"Hyperparameters: model_name: {self.model_name}, Batch_size: {batch_size}, dataset_size: {len(self.evaluation_dataset)}, dataset_size_after_filter_wrt_input_len: {len(filtered_dataset)} max_gen_length: {max_gen_length}, beam_size: {beam_size}, max_input_length: {self.hyperparameters['max_input_length']}, tokenizer_padding_setting: {self.hyperparameters['tokenizer_padding_setting']}, dataset_name= {self.dataset_name} \n"
+                    text = f"Hyperparameters: model_name: {self.model_name}, Batch_size: {batch_size}, dataset_size: {len(self.evaluation_dataset)}, dataset_size_after_filter_wrt_input_len: {len(filtered_dataset)} max_gen_length: {max_gen_length}, beam_size: {beam_size}, max_input_seq_length: {self.hyperparameters['max_input_seq_length']}, tokenizer_padding_setting: {self.hyperparameters['tokenizer_padding_setting']}, dataset_name= {self.dataset_name} \n"
                     log.write(text)
         except AssertionError as e:
             print(e)
@@ -514,7 +515,7 @@ class Evaluation:
             metric_results_dict_w_params["batch_size"] = batch_size
             metric_results_dict_w_params["beam_size"] = beam_size
             metric_results_dict_w_params["max_gen_length"] = max_gen_length
-            metric_results_dict_w_params["max_input_seq_length"] = self.hyperparameters["max_input_length"] # TODO: Report on different sentence lengths.
+            metric_results_dict_w_params["max_input_seq_length"] = self.hyperparameters["max_input_seq_length"] # TODO: Report on different sentence lengths.
             metric_results_dict_w_params["tokenizer_padding_setting"] = self.hyperparameters["tokenizer_padding_setting"] # TODO: Report on different sentence lengths.
 
             metric_results_dict_w_params.update(metric_results_dict)
@@ -776,7 +777,7 @@ def skip_previous_experiments(previous_experiments,current_params):
         #     return True
         
 
-        if len(subset_params_df.loc[(subset_params_df["dataset_size"] == int(current_params["dataset_size"])) & (subset_params_df["max_gen_length"] == int(current_params["max_gen_length"])) & (subset_params_df["beam_size"] == int(current_params["beam_size"])) & (subset_params_df["max_input_seq_length"] == int(current_params["max_input_length"])) & (subset_params_df["tokenizer_padding_setting"] == current_params["tokenizer_padding_setting"])]) > 0:
+        if len(subset_params_df.loc[(subset_params_df["dataset_size"] == int(current_params["dataset_size"])) & (subset_params_df["max_gen_length"] == int(current_params["max_gen_length"])) & (subset_params_df["beam_size"] == int(current_params["beam_size"])) & (subset_params_df["max_input_seq_length"] == int(current_params["max_input_seq_length"])) & (subset_params_df["tokenizer_padding_setting"] == current_params["tokenizer_padding_setting"])]) > 0:
 
 
             print("Experiment already run. Skipping...")
@@ -829,15 +830,15 @@ if __name__ == "__main__":
                         dataset_name=dataset_name, 
                         metrics_args = metrics_args,
                         streaming=streaming)      
-                    for max_input_length in quality_experiment_configurations_sweep["max_input_length"]:
-                        print("Max Input Length: " + str(max_input_length))
+                    for max_input_seq_length in quality_experiment_configurations_sweep["max_input_seq_length"]:
+                        print("Max Input Length: " + str(max_input_seq_length))
 
                         for tokenizer_padding_setting in quality_experiment_configurations_sweep["tokenizer_padding_setting"]:
 
                             print("Tokenizer Padding Setting: " + str(tokenizer_padding_setting))
 
 
-                            other_hyperparameters = {"max_input_length": max_input_length,
+                            other_hyperparameters = {"max_input_seq_length": max_input_seq_length,
                                             "tokenizer_padding_setting": tokenizer_padding_setting,
                                             }
                             
@@ -853,7 +854,7 @@ if __name__ == "__main__":
                                 print("Max Gen Length: " + str(max_gen_length)) # TODO: What is max_length here exactly??
                                 for beam_size in quality_experiment_configurations_sweep["beam_size"]:
                                     print("Beam Size: " + str(beam_size))
-                                    text = f"Hyperparameters: model_name: {model_name}, Batch_size: {batch_size}, dataset_size: {len(valid_dataset)}, max_gen_length: {max_gen_length}, beam_size: {beam_size}, max_input_length: {max_input_length}, tokenizer_padding_setting: {tokenizer_padding_setting}, dataset_name= {dataset_name} \n"
+                                    text = f"Hyperparameters: model_name: {model_name}, Batch_size: {batch_size}, dataset_size: {len(valid_dataset)}, max_gen_length: {max_gen_length}, beam_size: {beam_size}, max_input_seq_length: {max_input_seq_length}, tokenizer_padding_setting: {tokenizer_padding_setting}, dataset_name= {dataset_name} \n"
                                     print(text)
 
                                     current_params = {"model_name": model_name,
@@ -861,7 +862,7 @@ if __name__ == "__main__":
                                                     "dataset_size": len(valid_dataset),
                                                     "max_gen_length": max_gen_length,
                                                     "beam_size": beam_size,
-                                                    "max_input_length": max_input_length,
+                                                    "max_input_seq_length": max_input_seq_length,
                                                     "tokenizer_padding_setting": tokenizer_padding_setting,
                                                     "dataset_name": dataset_name,
                                                     }
@@ -886,14 +887,14 @@ if __name__ == "__main__":
                                         
                                         with open(failed_experiments_csv, "a") as f:
                                             csv_writer = csv.writer(f)
-                                            csv_writer.writerow([model_name, batch_size, dataset_size, max_gen_length, beam_size, max_input_length, tokenizer_padding_setting, dataset_name])
+                                            csv_writer.writerow([model_name, batch_size, dataset_size, max_gen_length, beam_size, max_input_seq_length, tokenizer_padding_setting, dataset_name])
 
                                         with open(fail_logs_file, "a") as log:
                                             log.write("ERROR: Exception occured during runtime!\n")
                                             print("ERROR: Exception occured during runtime!")
                                             print(e)
 
-                                            text = f"Hyperparameters: model_name: {model_name}, Batch_size: {batch_size}, dataset_size: {dataset_size}, max_gen_length: {max_gen_length}, beam_size: {beam_size}, max_input_length: {max_input_length}, tokenizer_padding_setting: {tokenizer_padding_setting}, dataset_name= {dataset_name} \n"
+                                            text = f"Hyperparameters: model_name: {model_name}, Batch_size: {batch_size}, dataset_size: {dataset_size}, max_gen_length: {max_gen_length}, beam_size: {beam_size}, max_input_seq_length: {max_input_seq_length}, tokenizer_padding_setting: {tokenizer_padding_setting}, dataset_name= {dataset_name} \n"
                                             log.write(text)
                                             log.write("Full traceback message:\n")
                                             log.write("**********")
@@ -981,7 +982,7 @@ if __name__ == "__main__":
 
     # exit()
 
-    hyperparameters = {"max_input_length": 10, "tokenizer_padding_setting": "do_not_pad"}
+    hyperparameters = {"max_input_seq_length": 10, "tokenizer_padding_setting": "do_not_pad"}
 
     evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters)
 
