@@ -1034,3 +1034,45 @@ OrderedDict([('active.all.allocated', 6636), ('active.all.current', 6636), ('act
 **********
 End of traceback message
 Continuing with errors...
+ERROR: Exception occured during runtime!
+Hyperparameters: model_name: google/switch-base-128, Batch_size: 16, dataset_size: all, max_gen_length: 128, beam_size: 4, max_input_seq_length: -1, tokenizer_padding_setting: pad_to_max_length, dataset_name= wmt14 
+Full traceback message:
+**********Traceback (most recent call last):
+  File "benchmark_suite.py", line 906, in <module>
+    save_res_util=save_res_util,
+  File "benchmark_suite.py", line 436, in call_batched
+  File "/home/wassim/miniconda3/envs/archer/lib/python3.8/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer/lib/python3.8/site-packages/transformers/generation/utils.py", line 1604, in generate
+    return self.beam_search(
+  File "/home/wassim/miniconda3/envs/archer/lib/python3.8/site-packages/transformers/generation/utils.py", line 2902, in beam_search
+    outputs = self(
+  File "/home/wassim/miniconda3/envs/archer/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1538, in _call_impl
+    result = forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer/lib/python3.8/site-packages/transformers/models/switch_transformers/modeling_switch_transformers.py", line 1652, in forward
+    decoder_outputs = self.decoder(
+  File "/home/wassim/miniconda3/envs/archer/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1538, in _call_impl
+    result = forward_call(*args, **kwargs)
+  File "benchmark_suite.py", line 99, in timer_forward
+    result = orig_forward(cls, *args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer/lib/python3.8/site-packages/transformers/models/switch_transformers/modeling_switch_transformers.py", line 1090, in forward
+    layer_outputs = layer_module(
+  File "/home/wassim/miniconda3/envs/archer/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1538, in _call_impl
+    result = forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer/lib/python3.8/site-packages/transformers/models/switch_transformers/modeling_switch_transformers.py", line 743, in forward
+    self_attention_outputs = self.layer[0](
+  File "/home/wassim/miniconda3/envs/archer/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1538, in _call_impl
+    result = forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer/lib/python3.8/site-packages/transformers/models/switch_transformers/modeling_switch_transformers.py", line 645, in forward
+    attention_output = self.SelfAttention(
+  File "/home/wassim/miniconda3/envs/archer/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1538, in _call_impl
+    result = forward_call(*args, **kwargs)
+  File "/home/wassim/miniconda3/envs/archer/lib/python3.8/site-packages/transformers/models/switch_transformers/modeling_switch_transformers.py", line 564, in forward
+    key_states = project(
+  File "/home/wassim/miniconda3/envs/archer/lib/python3.8/site-packages/transformers/models/switch_transformers/modeling_switch_transformers.py", line 548, in project
+    hidden_states = torch.cat([past_key_value, hidden_states], dim=2)
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 20.00 MiB (GPU 0; 23.69 GiB total capacity; 22.49 GiB already allocated; 11.12 MiB free; 23.07 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+OrderedDict([('active.all.allocated', 196044), ('active.all.current', 1511), ('active.all.freed', 194533), ('active.all.peak', 1550), ('active.large_pool.allocated', 9757), ('active.large_pool.current', 1376), ('active.large_pool.freed', 8381), ('active.large_pool.peak', 1379), ('active.small_pool.allocated', 186287), ('active.small_pool.current', 135), ('active.small_pool.freed', 186152), ('active.small_pool.peak', 220), ('active_bytes.all.allocated', 94872435200), ('active_bytes.all.current', 24143609856), ('active_bytes.all.freed', 70728825344), ('active_bytes.all.peak', 24155608064), ('active_bytes.large_pool.allocated', 84525879296), ('active_bytes.large_pool.current', 24134754304), ('active_bytes.large_pool.freed', 60391124992), ('active_bytes.large_pool.peak', 24147599360), ('active_bytes.small_pool.allocated', 10346555904), ('active_bytes.small_pool.current', 8855552), ('active_bytes.small_pool.freed', 10337700352), ('active_bytes.small_pool.peak', 73433088), ('allocated_bytes.all.allocated', 94872435200), ('allocated_bytes.all.current', 24143609856), ('allocated_bytes.all.freed', 70728825344), ('allocated_bytes.all.peak', 24155608064), ('allocated_bytes.large_pool.allocated', 84525879296), ('allocated_bytes.large_pool.current', 24134754304), ('allocated_bytes.large_pool.freed', 60391124992), ('allocated_bytes.large_pool.peak', 24147599360), ('allocated_bytes.small_pool.allocated', 10346555904), ('allocated_bytes.small_pool.current', 8855552), ('allocated_bytes.small_pool.freed', 10337700352), ('allocated_bytes.small_pool.peak', 73433088), ('allocation.all.allocated', 196044), ('allocation.all.current', 1511), ('allocation.all.freed', 194533), ('allocation.all.peak', 1550), ('allocation.large_pool.allocated', 9757), ('allocation.large_pool.current', 1376), ('allocation.large_pool.freed', 8381), ('allocation.large_pool.peak', 1379), ('allocation.small_pool.allocated', 186287), ('allocation.small_pool.current', 135), ('allocation.small_pool.freed', 186152), ('allocation.small_pool.peak', 220), ('inactive_split.all.allocated', 99941), ('inactive_split.all.current', 184), ('inactive_split.all.freed', 99757), ('inactive_split.all.peak', 203), ('inactive_split.large_pool.allocated', 5040), ('inactive_split.large_pool.current', 165), ('inactive_split.large_pool.freed', 4875), ('inactive_split.large_pool.peak', 183), ('inactive_split.small_pool.allocated', 94901), ('inactive_split.small_pool.current', 19), ('inactive_split.small_pool.freed', 94882), ('inactive_split.small_pool.peak', 62), ('inactive_split_bytes.all.allocated', 71279050240), ('inactive_split_bytes.all.current', 632143872), ('inactive_split_bytes.all.freed', 70646906368), ('inactive_split_bytes.all.peak', 794167808), ('inactive_split_bytes.large_pool.allocated', 60735512576), ('inactive_split_bytes.large_pool.current', 628416512), ('inactive_split_bytes.large_pool.freed', 60107096064), ('inactive_split_bytes.large_pool.peak', 789012480), ('inactive_split_bytes.small_pool.allocated', 10543537664), ('inactive_split_bytes.small_pool.current', 3727360), ('inactive_split_bytes.small_pool.freed', 10539810304), ('inactive_split_bytes.small_pool.peak', 27439104), ('max_split_size', -1), ('num_alloc_retries', 2), ('num_ooms', 1), ('oversize_allocations.allocated', 0), ('oversize_allocations.current', 0), ('oversize_allocations.freed', 0), ('oversize_allocations.peak', 0), ('oversize_segments.allocated', 0), ('oversize_segments.current', 0), ('oversize_segments.freed', 0), ('oversize_segments.peak', 0), ('requested_bytes.all.allocated', 94021803688), ('requested_bytes.all.current', 24143581656), ('requested_bytes.all.freed', 69878222032), ('requested_bytes.all.peak', 24151353560), ('requested_bytes.large_pool.allocated', 83715094016), ('requested_bytes.large_pool.current', 24134754304), ('requested_bytes.large_pool.freed', 59580339712), ('requested_bytes.large_pool.peak', 24143372288), ('requested_bytes.small_pool.allocated', 10306709672), ('requested_bytes.small_pool.current', 8827352), ('requested_bytes.small_pool.freed', 10297882320), ('requested_bytes.small_pool.peak', 73428377), ('reserved_bytes.all.allocated', 27109883904), ('reserved_bytes.all.current', 24775753728), ('reserved_bytes.all.freed', 2334130176), ('reserved_bytes.all.peak', 24775753728), ('reserved_bytes.large_pool.allocated', 26914848768), ('reserved_bytes.large_pool.current', 24763170816), ('reserved_bytes.large_pool.freed', 2151677952), ('reserved_bytes.large_pool.peak', 24763170816), ('reserved_bytes.small_pool.allocated', 195035136), ('reserved_bytes.small_pool.current', 12582912), ('reserved_bytes.small_pool.freed', 182452224), ('reserved_bytes.small_pool.peak', 88080384), ('segment.all.allocated', 1502), ('segment.all.current', 1293), ('segment.all.freed', 209), ('segment.all.peak', 1325), ('segment.large_pool.allocated', 1409), ('segment.large_pool.current', 1287), ('segment.large_pool.freed', 122), ('segment.large_pool.peak', 1287), ('segment.small_pool.allocated', 93), ('segment.small_pool.current', 6), ('segment.small_pool.freed', 87), ('segment.small_pool.peak', 42)])
+**********
+End of traceback message
+Attempting to reduce batch size and retrying...

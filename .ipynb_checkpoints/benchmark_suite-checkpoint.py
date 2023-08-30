@@ -3,7 +3,7 @@ from typing import Any, Callable
 import functools
 
 import torch
-from transformers import  TextStreamer, AutoConfig, NllbTokenizer, AutoTokenizer, T5Tokenizer, T5TokenizerFast, T5ForConditionalGeneration, M2M100ForConditionalGeneration, NllbMoeForConditionalGeneration, SwitchTransformersForConditionalGeneration
+from transformers import  AutoConfig, NllbTokenizer, AutoTokenizer, T5Tokenizer, T5TokenizerFast, T5ForConditionalGeneration, M2M100ForConditionalGeneration, NllbMoeForConditionalGeneration, SwitchTransformersForConditionalGeneration
 from torch.profiler import profile, record_function, ProfilerActivity
 
 from datasets import load_dataset, Dataset, DatasetDict
@@ -31,7 +31,7 @@ import transformers
 # from deepspeed.accelerator import get_accelerator
 # from deepspeed.profiling.flops_profiler import get_model_profile
 import utils
-from hyperparameters_config import beam_size_experiments_switch, quality_experiment_configurations_sweep, large_model_quality_experiments_nllb_moe
+from hyperparameters_config import quality_experiment_configurations_sweep, large_model_quality_experiments
 
 from tqdm.auto import tqdm
 import time
@@ -59,13 +59,11 @@ FORWARD_TIMES_FILENAMES = {
     "t5-large": METRIC_REPORTS_DIR_PATH + "t5_latencies.csv",
     "nllb-200-1.3B" : METRIC_REPORTS_DIR_PATH + "nllb_latencies.csv",
     "nllb-200-distilled-600M" : METRIC_REPORTS_DIR_PATH + "nllb_latencies.csv",
-    "facebook/nllb-moe-54b" : METRIC_REPORTS_DIR_PATH + "nllb-moe_latencies.csv",
+    "nllb-moe-54b" : METRIC_REPORTS_DIR_PATH + "nllb-moe_latencies.csv",
     "google/switch-base-128" : METRIC_REPORTS_DIR_PATH + "switch_latencies.csv",
     "facebook/nllb-200-distilled-1.3B" : METRIC_REPORTS_DIR_PATH + "nllb_latencies.csv",
     "facebook/nllb-200-distilled-600M" : METRIC_REPORTS_DIR_PATH + "nllb_latencies.csv",
     "facebook/nllb-200-1.3B" : METRIC_REPORTS_DIR_PATH + "nllb_latencies.csv",
-    "./opus_switch_model_8/checkpoint-1500" : METRIC_REPORTS_DIR_PATH + "switch_latencies.csv",
-    "./opus_switch_model_16/checkpoint-6000" : METRIC_REPORTS_DIR_PATH + "switch_latencies.csv",
 }
 
 def add_latency_measurement_functionality():
@@ -185,7 +183,6 @@ lang_code_t5_dictionary = {
 def postprocess_batch(predictions, labels, tokenizer):
     predictions = predictions.cpu().numpy()
     labels = labels.cpu().numpy()
-
     predictions = np.where(predictions != -100, predictions, tokenizer.pad_token_id)
     decoded_preds = tokenizer.batch_decode(predictions, skip_special_tokens=True)
 
@@ -262,7 +259,6 @@ class Evaluation:
         # self.PATH_TO_LOG_LATENCY = self.PATH_TO_LOG_LATENCY.replace("google/", "")
         # self.add_latency_measurement_functionality( path_to_log_latency =  self.PATH_TO_LOG_LATENCY)
         
-        self.archer_engine = None
   
 
         
@@ -278,29 +274,22 @@ class Evaluation:
             self.model= M2M100ForConditionalGeneration.from_pretrained(model_name)
 
 
-
         elif "nllb-moe-54b" in model_name and src_lang == "en" and tgt_lang == "fr":
-            CONFIG["device_memory_ratio"] = 0.5
             CONFIG["nvme_path"] = os.path.join(CONFIG["nvme_path"], "nllb-moe-54b")
-            # os.system(f"rm -rf {CONFIG['nvme_path']}")
-
             # self.tokenizer = NllbTokenizer.from_pretrained(model_name, src_lang="eng_Latn", tgt_lang="fra_Latn")
             self.tokenizer = AutoTokenizer.from_pretrained(model_name, src_lang="eng_Latn", tgt_lang="fra_Latn")
 
             # Model would be too huge to load on GPU. Offload to Disk using Archer
             self.archer_engine = ArcherEngine()
-            with self.archer_engine.init(M2M100ForConditionalGeneration,
+            with self.archer_engine.init(NllbMoeForConditionalGeneration,
                             ar_config=CONFIG,
                             trace_path="./trace.json"):
                 # model_offload = NllbMoeModel.from_pretrained(model_name)
-                self.model = M2M100ForConditionalGeneration.from_pretrained(model_name)
+                self.model = NllbMoeForConditionalGeneration.from_pretrained(model_name)
             
 
         elif "google/switch-base-128" in model_name:
-            CONFIG["device_memory_ratio"] = 0.9
             CONFIG["nvme_path"] = os.path.join(CONFIG["nvme_path"], "switch-base-128")
-            # os.system(f"rm -rf {CONFIG['nvme_path']}")
-
             self.tokenizer = AutoTokenizer.from_pretrained(model_name)
             # Model would be too huge to load on GPU. Offload to Disk using Archer
             self.archer_engine = ArcherEngine()
@@ -309,43 +298,18 @@ class Evaluation:
                                     trace_path="./trace.json"):
                 self.model = SwitchTransformersForConditionalGeneration.from_pretrained(
                     'google/switch-base-128')
-                
-        elif "opus_switch" in model_name:
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name)    
-            self.model = SwitchTransformersForConditionalGeneration.from_pretrained(model_name)
-
-
-        elif "opus_switch" in model_name:
-            CONFIG["nvme_path"] = os.path.join(CONFIG["nvme_path"], "switch-base-8")
-
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-            # Model would be too huge to load on GPU. Offload to Disk using Archer
-            self.archer_engine = ArcherEngine()
-            with self.archer_engine.init(SwitchTransformersForConditionalGeneration,
-                                    ar_config=CONFIG,
-                                    trace_path="./trace.json"):
-                self.model = SwitchTransformersForConditionalGeneration.from_pretrained(
-                    pretrained_model_name_or_path=model_name)
 
         else:
             raise NotImplementedError("Model not supported")
-   
 
-        if self.archer_engine is None:
-            print(self.model.device)
-            print("start")
-            self.model.to("cuda:0")
 
         self.model.eval()
         # Set device (GPU if available)
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # TODO: Check if this is correct
-     
-
-        # if "google/switch" not in model_name:
-        #     self.model.to(self.device)
-            
-
+        if self.archer_engine is None:
+            self.model.to(self.device)
+        
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         pass
@@ -415,7 +379,6 @@ class Evaluation:
                     max_gen_length=128,
                     max_input_seq_length=128,
                     batch_size=128, 
-                    streamText = False,
                     pytorch_profiling=False, save_res_util=False, save_metrics_csv=False, overwrite_csv=False):
         from transformers import DataCollatorForSeq2Seq
         # If path already exists for recording latencies using decorated function, it is deleted. This is to avoid rewrapping the model twice.
@@ -446,51 +409,40 @@ class Evaluation:
                 tokenized_datasets, collate_fn=data_collator, batch_size=batch_size, pin_memory=True, 
         )
 
+        print("what")
         pred_lengths = np.array([])
         # Call config to retrieve pad_token_id. Will be useful for calculating throughput.
         config = AutoConfig.from_pretrained(self.model_name)
+        self.model.config.decoder_start_token_id = self.tokenizer.pad_token_id
         number_of_total_encoded_tokens = 0
         number_of_total_decoded_tokens = 0
         total_encoded_tokens = []
 
 
-        streamer = None
-        if streamText:
-            streamer = TextStreamer(self.tokenizer)
         if not pytorch_profiling:
             
             for batch in tqdm(eval_dataloader):
+                    decoder_start_token_id = self.model.config.pad_token_id
 
                     input_ids = batch["input_ids"].to(self.device, non_blocking=True)
 
+                    attention_mask = (input_ids != config.pad_token_id).to(input_ids.dtype)
 
                     with torch.no_grad():
-                        if "nllb" in self.model_name:
-                                  
-                            # self.model.to("cpu")
-                            # input_ids.to("cpu")
-                            outputs = self.model.generate(input_ids, forced_bos_token_id=self.tokenizer.lang_code_to_id["fra_Latn"], do_sample=False, max_length=max_gen_length, num_beams=beam_size, streamer=streamer)
-                            # outputs = self.model.generate(input_ids, forced_bos_token_id=self.tokenizer.lang_code_to_id["fra_Latn"], do_sample=False, max_length=max_gen_length, num_beams=beam_size)
-                        
+                        if  "nllb" in self.model_name:
+                            outputs = self.model.generate(input_ids, forced_bos_token_id=self.tokenizer.lang_code_to_id["fra_Latn"], do_sample=False, max_length=max_gen_length, num_beams=beam_size)
                         elif "switch" in self.model_name:
-                            self.model.config.decoder_start_token_id = self.tokenizer.pad_token_id
-                            self.model.config.bos_token_id = self.tokenizer.pad_token_id
-                            self.model.config.eos_token_id = self.tokenizer.pad_token_id
-                            decoder_start_token_id = self.model.config.pad_token_id
-                            outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size,   
-                                                        decoder_start_token_id=decoder_start_token_id, 
-                                                        bos_token_id=self.tokenizer.bos_token_id,
-                                                        eos_token_id=self.tokenizer.eos_token_id,
-                                                          streamer=streamer)
+                            outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size,   decoder_start_token_id=decoder_start_token_id)
 
                         else:
+                            print("no way")
                             # outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=False, max_length=128, num_beams=1) # Works, for transformers.
-                            outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size, streamer=streamer)
-                    
-                    attention_mask = (input_ids != config.pad_token_id).to(input_ids.dtype)
-                    decoded_preds, decoded_labels, pred_length  = postprocess_batch(outputs, batch["labels"], self.tokenizer)
+                            outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size)
 
+                    del input_ids
+                    decoded_preds, decoded_labels, pred_length  = postprocess_batch(outputs, batch["labels"], self.tokenizer)
                     del outputs
+
                     for metric_name in self.all_metrics.keys():
                         self.all_metrics[metric_name].add_batch(predictions=decoded_preds, references=decoded_labels)
 
@@ -504,7 +456,6 @@ class Evaluation:
                     total_encoded_tokens.append(torch.sum(attention_mask))  #Number of tokens. Will be used to calculate latency per token
 
 
-                    del input_ids
 
                     del attention_mask
                     import gc
@@ -852,7 +803,7 @@ def skip_previous_experiments(previous_experiments,current_params):
         if len(subset_params_df.loc[(subset_params_df["dataset_size"] == int(current_params["dataset_size"])) & (subset_params_df["max_gen_length"] == int(current_params["max_gen_length"])) & (subset_params_df["beam_size"] == int(current_params["beam_size"])) & (subset_params_df["max_input_seq_length"] == int(current_params["max_input_seq_length"])) & (subset_params_df["tokenizer_padding_setting"] == current_params["tokenizer_padding_setting"])]) > 0:
 
 
-            print("Experiment already ran. Skipping...")
+            print("Experiment already run. Skipping...")
             return True
     return False
 
@@ -862,11 +813,11 @@ if __name__ == "__main__":
     # Extensive Experimentation with different hyperparameters
 
     # ---- Additional Hyperparameters ----
-    original_batch_size = 2
+    original_batch_size = 16
     metrics_args = ["sacrebleu", "spBleu", "chrf", "chrfpp", "meteor"]
 
 
-    sweep = False
+    sweep = True
     dataset_name = "wmt14"
 
     continue_with_errors  = True
@@ -878,7 +829,7 @@ if __name__ == "__main__":
     args = utils.parse_args()
 
     # configurations_sweep = quality_experiment_configurations_sweep
-    configurations_sweep = large_model_quality_experiments_nllb_moe
+    configurations_sweep = large_model_quality_experiments
 
 
     if sweep:
@@ -1033,14 +984,12 @@ if __name__ == "__main__":
     # save_res_util = False
     # # model_name = "google/t5-v1_1-small" # Test Model
     # model_name = "t5-base" # Test Model
-    # model_name = "t5-small"
-    # model_name = "google/switch-base-128"
+    model_name = "t5-small"
+    model_name = "google/switch-base-128"
     # model_name = "facebook/nllb-200-distilled-600M"
     # model_name = "t5-11b"
     # model_name = "facebook/nllb-200-1.3B"
-    model_name = "facebook/nllb-moe-54b"
-    # model_name = "./opus_switch_model_8/checkpoint-1500"
-    # model_name = "./opus_switch_model_16/checkpoint-6000"
+    # model_name = "facebook/nllb-moe-54b"
 
     # # dataset_name = "opus100"  # Test Dataset
     dataset_name = "wmt14"
@@ -1054,20 +1003,20 @@ if __name__ == "__main__":
     # # TODO: Change to FLORES
     # # TODO: Make sure to not use the same dataset that was used to train the models!!
     # all_dataset = load_dataset(dataset_name, "fr-en", split="validation", streaming=streaming)
-    all_dataset = retrieve_relevant_validation_dataset(dataset_name, dataset_size=3000)
+    all_dataset = retrieve_relevant_validation_dataset(dataset_name, dataset_size=1)
 
     # all_dataset = load_dataset(dataset_name, "fr-en", split="test", streaming=streaming)
     print(all_dataset)
     # all_dataset = load_dataset(dataset_name, "fra_Latn", split="dev[:100]", streaming=streaming)    
-    print(all_dataset["translation"][0]["en"])
+    # print(all_dataset[1])
     # all_dataset = load_dataset(dataset_name, "eng_Latn", split="dev[:100]", streaming=streaming)
     # print(all_dataset[1])
-    print()
+
     # exit()
 
-    hyperparameters = {"max_input_seq_length": 50, "tokenizer_padding_setting": "do_not_pad"}
+    hyperparameters = {"max_input_seq_length": 10, "tokenizer_padding_setting": "do_not_pad"}
 
     evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters)
 
     # evalEngine.call_batched(batch_size=32, beam_size=64,max_gen_length=512, save_res_util=save_res_util, save_metrics_csv=True, overwrite_csv=False)
-    evalEngine.call_batched(batch_size=16, beam_size=4,max_gen_length=128, save_res_util=save_res_util, save_metrics_csv=False, overwrite_csv=False, streamText=False)
+    evalEngine.call_batched(batch_size=32, beam_size=64,max_gen_length=64, save_res_util=save_res_util, save_metrics_csv=True, overwrite_csv=False)
