@@ -50,13 +50,13 @@ quality_experiment_configurations_sweep = { # For measuring quality
     # model_name = "facebook/nllb-moe-54b"
 
 large_model_quality_experiments_switch = {
-    "dataset_size" : [1, "all"],
-    "max_gen_length" : [128], # Maximum generation sequence length
+    "dataset_size" : [1],
+    "max_gen_length" : [20,32,64,128], # Maximum generation sequence length
     "max_input_seq_length": [-1], # Set to -1 for no limit
-    "beam_size" : [4],
+    "beam_size" : [1,2,4],
     "model_name" : ["google/switch-base-128"],
-    "dataset_name" : ["wmt14", "flores200"],
-    "tokenizer_padding_setting" : ["pad_to_max_length"],
+    "dataset_name" : ["flores200", "wmt14"],
+    "tokenizer_padding_setting" : ["no_pad_fill"],
     # "batch_size" : [1,32,64,128,256]
 }
 

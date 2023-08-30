@@ -153,3 +153,9 @@ facebook/nllb-moe-54b,2,all,128,4,-1,pad_to_max_length,wmt14
 facebook/nllb-moe-54b,2,1,128,4,-1,pad_to_max_length,wmt14
 facebook/nllb-moe-54b,2,1,128,4,-1,pad_to_max_length,wmt14
 facebook/nllb-moe-54b,2,1,128,4,-1,pad_to_max_length,wmt14
+facebook/nllb-moe-54b,2,1,128,4,-1,pad_to_max_length,wmt14
+facebook/nllb-moe-54b,2,all,128,4,-1,pad_to_max_length,wmt14
+facebook/nllb-moe-54b,2,1,128,4,-1,pad_to_max_length,flores200
+facebook/nllb-moe-54b,2,all,128,4,-1,pad_to_max_length,flores200
+facebook/nllb-moe-54b,1,1,128,1,-1,pad_to_max_length,wmt14
+facebook/nllb-moe-54b,1,all,128,1,-1,pad_to_max_length,wmt14

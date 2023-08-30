@@ -280,7 +280,7 @@ class Evaluation:
 
 
         elif "nllb-moe-54b" in model_name and src_lang == "en" and tgt_lang == "fr":
-            CONFIG["device_memory_ratio"] = 0.5
+            CONFIG["device_memory_ratio"] = 0.6
             CONFIG["nvme_path"] = os.path.join(CONFIG["nvme_path"], "nllb-moe-54b")
             # os.system(f"rm -rf {CONFIG['nvme_path']}")
 
@@ -289,11 +289,11 @@ class Evaluation:
 
             # Model would be too huge to load on GPU. Offload to Disk using Archer
             self.archer_engine = ArcherEngine()
-            with self.archer_engine.init(M2M100ForConditionalGeneration,
+            with self.archer_engine.init(NllbMoeForConditionalGeneration,
                             ar_config=CONFIG,
                             trace_path="./trace.json"):
                 # model_offload = NllbMoeModel.from_pretrained(model_name)
-                self.model = M2M100ForConditionalGeneration.from_pretrained(model_name)
+                self.model = NllbMoeForConditionalGeneration.from_pretrained(model_name)
             
 
         elif "google/switch-base-128" in model_name:
@@ -862,11 +862,11 @@ if __name__ == "__main__":
     # Extensive Experimentation with different hyperparameters
 
     # ---- Additional Hyperparameters ----
-    original_batch_size = 2
+    original_batch_size = 1
     metrics_args = ["sacrebleu", "spBleu", "chrf", "chrfpp", "meteor"]
 
 
-    sweep = False
+    sweep = True
     dataset_name = "wmt14"
 
     continue_with_errors  = True
@@ -1070,4 +1070,4 @@ if __name__ == "__main__":
     evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters)
 
     # evalEngine.call_batched(batch_size=32, beam_size=64,max_gen_length=512, save_res_util=save_res_util, save_metrics_csv=True, overwrite_csv=False)
-    evalEngine.call_batched(batch_size=16, beam_size=4,max_gen_length=128, save_res_util=save_res_util, save_metrics_csv=False, overwrite_csv=False, streamText=False)
+    evalEngine.call_batched(batch_size=2, beam_size=4,max_gen_length=128, save_res_util=save_res_util, save_metrics_csv=False, overwrite_csv=False, streamText=False)
