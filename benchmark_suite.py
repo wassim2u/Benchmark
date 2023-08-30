@@ -31,7 +31,7 @@ import transformers
 # from deepspeed.accelerator import get_accelerator
 # from deepspeed.profiling.flops_profiler import get_model_profile
 import utils
-from hyperparameters_config import beam_size_experiments_switch, quality_experiment_configurations_sweep, large_model_quality_experiments_nllb_moe
+from hyperparameters_config import  archer_experiments_device_memory_ratio_config_google, large_model_quality_experiments_switch_w_archer, large_model_quality_experiments_switch_no_archer, quality_experiment_configurations_sweep, large_model_quality_experiments_nllb_moe
 
 from tqdm.auto import tqdm
 import time
@@ -53,6 +53,7 @@ setup_environment()
 CONFIG = {"nvme_path": f"/mnt/{getpass.getuser()}/test-data"}
 METRIC_REPORTS_DIR_PATH = "./metric_logs/"
 
+# TODO: Provide a more uniform and robust way to map files and format the directory
 FORWARD_TIMES_FILENAMES = {
     "t5-small" : METRIC_REPORTS_DIR_PATH + "t5_latencies.csv",
     "t5-base" : METRIC_REPORTS_DIR_PATH + "t5_latencies.csv",
@@ -66,6 +67,8 @@ FORWARD_TIMES_FILENAMES = {
     "facebook/nllb-200-1.3B" : METRIC_REPORTS_DIR_PATH + "nllb_latencies.csv",
     "./opus_switch_model_8/checkpoint-1500" : METRIC_REPORTS_DIR_PATH + "switch_latencies.csv",
     "./opus_switch_model_16/checkpoint-6000" : METRIC_REPORTS_DIR_PATH + "switch_latencies.csv",
+    "google/switch_16_finetuned" : METRIC_REPORTS_DIR_PATH + "switch_latencies.csv",
+
 }
 
 def add_latency_measurement_functionality():
@@ -236,7 +239,7 @@ def postprocess_text(preds, labels):
 
 
 class Evaluation:
-    def __init__(self,model_name, evaluation_dataset, dataset_name, metrics_args, hyperparameters={}, streaming=False, src_lang="en", tgt_lang="fr"):
+    def __init__(self,model_name, evaluation_dataset, dataset_name, metrics_args, hyperparameters={}, use_archer=False, device_memory_ratio=0.9, streaming=False, src_lang="en", tgt_lang="fr"):
         
         self.model_name = model_name
         self.set_dataset(evaluation_dataset, dataset_name)
@@ -246,7 +249,7 @@ class Evaluation:
         self.src_lang = src_lang
         self.tgt_lang = tgt_lang
 
-        if src_lang == "en" and tgt_lang == "fr" and "t5" in model_name or "google/switch" in model_name:
+        if src_lang == "en" and tgt_lang == "fr" and "t5" in model_name or "google/switch":
             self.prefix = "translate English to French: "
         else:
             self.prefix = ""
@@ -263,7 +266,7 @@ class Evaluation:
         # self.add_latency_measurement_functionality( path_to_log_latency =  self.PATH_TO_LOG_LATENCY)
         
         self.archer_engine = None
-  
+        self.use_archer = use_archer
 
         
         # Define model and tokenizer
@@ -280,7 +283,7 @@ class Evaluation:
 
 
         elif "nllb-moe-54b" in model_name and src_lang == "en" and tgt_lang == "fr":
-            CONFIG["device_memory_ratio"] = 0.6
+            CONFIG["device_memory_ratio"] = device_memory_ratio #0.65 or lower is better
             CONFIG["nvme_path"] = os.path.join(CONFIG["nvme_path"], "nllb-moe-54b")
             # os.system(f"rm -rf {CONFIG['nvme_path']}")
 
@@ -299,7 +302,7 @@ class Evaluation:
         elif "google/switch-base-128" in model_name:
             CONFIG["device_memory_ratio"] = 0.9
             CONFIG["nvme_path"] = os.path.join(CONFIG["nvme_path"], "switch-base-128")
-            # os.system(f"rm -rf {CONFIG['nvme_path']}")
+            os.system(f"rm -rf {CONFIG['nvme_path']}")
 
             self.tokenizer = AutoTokenizer.from_pretrained(model_name)
             # Model would be too huge to load on GPU. Offload to Disk using Archer
@@ -310,9 +313,23 @@ class Evaluation:
                 self.model = SwitchTransformersForConditionalGeneration.from_pretrained(
                     'google/switch-base-128')
                 
-        elif "opus_switch" in model_name:
+        elif "opus_switch_model_16" in model_name or "google/switch_16_finetuned" in model_name:
             self.tokenizer = AutoTokenizer.from_pretrained(model_name)    
-            self.model = SwitchTransformersForConditionalGeneration.from_pretrained(model_name)
+            if use_archer:
+                CONFIG["device_memory_ratio"] = device_memory_ratio
+                            
+                CONFIG["nvme_path"] = os.path.join(CONFIG["nvme_path"], "switch-base-16")
+                os.system(f"rm -rf {CONFIG['nvme_path']}")
+
+                # Model would be too huge to load on GPU. Offload to Disk using Archer
+                self.archer_engine = ArcherEngine()
+                with self.archer_engine.init(SwitchTransformersForConditionalGeneration,
+                                        ar_config=CONFIG,
+                                        trace_path="./trace.json"):
+                    self.model = SwitchTransformersForConditionalGeneration.from_pretrained(
+                        pretrained_model_name_or_path=model_name)
+            else:
+                self.model = SwitchTransformersForConditionalGeneration.from_pretrained(model_name)
 
 
         elif "opus_switch" in model_name:
@@ -455,67 +472,84 @@ class Evaluation:
 
 
         streamer = None
+        profInference, record_generation = None, None
         if streamText:
             streamer = TextStreamer(self.tokenizer)
-        if not pytorch_profiling:
-            
-            for batch in tqdm(eval_dataloader):
+        if pytorch_profiling:
+            profInference = profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], 
+                    record_shapes=False,
+                    profile_memory=True,
+                    with_flops=False,
+                    # schedule=torch.profiler.schedule(
+                    #         wait=1,
+                    #         warmup=1,
+                    #         active=3,
+                    #         repeat=2,
+                    #     ),
+                 on_trace_ready=torch.profiler.tensorboard_trace_handler('./log/' + self.model_name +"_"+ self.dataset_name),
+            ) 
+            profInference.start()
+        
+        for batch in tqdm(eval_dataloader):
 
-                    input_ids = batch["input_ids"].to(self.device, non_blocking=True)
-
-
-                    with torch.no_grad():
-                        if "nllb" in self.model_name:
-                                  
-                            # self.model.to("cpu")
-                            # input_ids.to("cpu")
-                            outputs = self.model.generate(input_ids, forced_bos_token_id=self.tokenizer.lang_code_to_id["fra_Latn"], do_sample=False, max_length=max_gen_length, num_beams=beam_size, streamer=streamer)
-                            # outputs = self.model.generate(input_ids, forced_bos_token_id=self.tokenizer.lang_code_to_id["fra_Latn"], do_sample=False, max_length=max_gen_length, num_beams=beam_size)
-                        
-                        elif "switch" in self.model_name:
-                            self.model.config.decoder_start_token_id = self.tokenizer.pad_token_id
-                            self.model.config.bos_token_id = self.tokenizer.pad_token_id
-                            self.model.config.eos_token_id = self.tokenizer.pad_token_id
-                            decoder_start_token_id = self.model.config.pad_token_id
-                            outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size,   
-                                                        decoder_start_token_id=decoder_start_token_id, 
-                                                        bos_token_id=self.tokenizer.bos_token_id,
-                                                        eos_token_id=self.tokenizer.eos_token_id,
-                                                          streamer=streamer)
-
-                        else:
-                            # outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=False, max_length=128, num_beams=1) # Works, for transformers.
-                            outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size, streamer=streamer)
+                input_ids = batch["input_ids"].to(self.device, non_blocking=True)
+                if pytorch_profiling:
+                    record_generation = record_function("model_inference")
+                    record_generation.record()
+                with torch.no_grad():
+                    if "nllb" in self.model_name:
+                                
+                        # self.model.to("cpu")
+                        # input_ids.to("cpu")
+                        outputs = self.model.generate(input_ids, forced_bos_token_id=self.tokenizer.lang_code_to_id["fra_Latn"], do_sample=False, max_length=max_gen_length, num_beams=beam_size, streamer=streamer)
+                        # outputs = self.model.generate(input_ids, forced_bos_token_id=self.tokenizer.lang_code_to_id["fra_Latn"], do_sample=False, max_length=max_gen_length, num_beams=beam_size)
                     
-                    attention_mask = (input_ids != config.pad_token_id).to(input_ids.dtype)
-                    decoded_preds, decoded_labels, pred_length  = postprocess_batch(outputs, batch["labels"], self.tokenizer)
+                    elif "switch" in self.model_name:
+                        self.model.config.decoder_start_token_id = self.tokenizer.pad_token_id
+                        self.model.config.bos_token_id = self.tokenizer.pad_token_id
+                        self.model.config.eos_token_id = self.tokenizer.pad_token_id
+                        decoder_start_token_id = self.model.config.pad_token_id
+                        outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size,   
+                                                    decoder_start_token_id=decoder_start_token_id, 
+                                                    bos_token_id=self.tokenizer.bos_token_id,
+                                                    eos_token_id=self.tokenizer.eos_token_id,
+                                                        streamer=streamer)
 
-                    del outputs
-                    for metric_name in self.all_metrics.keys():
-                        self.all_metrics[metric_name].add_batch(predictions=decoded_preds, references=decoded_labels)
-
-                    pred_lengths = np.concatenate((pred_lengths, pred_length), axis=0) if len(pred_lengths) !=0 else pred_length
+                    else:
+                        # outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=False, max_length=128, num_beams=1) # Works, for transformers.
+                        outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size, streamer=streamer)
                 
-                    decoded_preds, decoded_labels = None, None
+                if pytorch_profiling:
+                    record_generation.stop()
 
-                    # For calculating throughput, we need to know the number of total tokens generated.
-                    number_of_total_encoded_tokens += torch.sum(attention_mask)
-                    number_of_total_decoded_tokens += np.sum(pred_length) #Sum of generated lengths
-                    total_encoded_tokens.append(torch.sum(attention_mask))  #Number of tokens. Will be used to calculate latency per token
+                attention_mask = (input_ids != config.pad_token_id).to(input_ids.dtype)
+                decoded_preds, decoded_labels, pred_length  = postprocess_batch(outputs, batch["labels"], self.tokenizer)
+
+                del outputs
+                for metric_name in self.all_metrics.keys():
+                    self.all_metrics[metric_name].add_batch(predictions=decoded_preds, references=decoded_labels)
+
+                pred_lengths = np.concatenate((pred_lengths, pred_length), axis=0) if len(pred_lengths) !=0 else pred_length
+            
+                decoded_preds, decoded_labels = None, None
+
+                # For calculating throughput, we need to know the number of total tokens generated.
+                number_of_total_encoded_tokens += torch.sum(attention_mask)
+                number_of_total_decoded_tokens += np.sum(pred_length) #Sum of generated lengths
+                total_encoded_tokens.append(torch.sum(attention_mask))  #Number of tokens. Will be used to calculate latency per token
 
 
-                    del input_ids
+                del input_ids
 
-                    del attention_mask
-                    import gc
-                    gc.collect()
-                    # torch.cuda.synchronize()
-                    torch.cuda.empty_cache()
+                del attention_mask
+                import gc
+                gc.collect()
+                # torch.cuda.synchronize()
+                torch.cuda.empty_cache()
 
-
-        else:
-            pass
-          
+        
+        if pytorch_profiling:
+            profInference.stop()
 
         # Export to 
         # profInference.export_chrome_trace("trace.json")
@@ -576,6 +610,7 @@ class Evaluation:
             metric_results_dict_w_params["model_name"] = self.model_name
             total_params = sum(p.numel() for p in self.model.parameters())
             metric_results_dict_w_params["total_params"] = total_params
+            metric_results_dict_w_params["use_archer"] = self.use_archer
             metric_results_dict_w_params["dataset_name"] = self.dataset_name
             metric_results_dict_w_params["dataset_size"] = len(self.evaluation_dataset)
             metric_results_dict_w_params["dataset_size_after_filter_wrt_input_len"] = len(filtered_dataset)
@@ -862,11 +897,12 @@ if __name__ == "__main__":
     # Extensive Experimentation with different hyperparameters
 
     # ---- Additional Hyperparameters ----
-    original_batch_size = 1
+    original_batch_size = 32
     metrics_args = ["sacrebleu", "spBleu", "chrf", "chrfpp", "meteor"]
 
 
     sweep = True
+    pytorch_profiling = True
     dataset_name = "wmt14"
 
     continue_with_errors  = True
@@ -878,7 +914,9 @@ if __name__ == "__main__":
     args = utils.parse_args()
 
     # configurations_sweep = quality_experiment_configurations_sweep
-    configurations_sweep = large_model_quality_experiments_nllb_moe
+    # configurations_sweep = large_model_quality_experiments_switch_w_archer
+    configurations_sweep = archer_experiments_device_memory_ratio_config_google
+
 
 
     if sweep:
@@ -905,7 +943,10 @@ if __name__ == "__main__":
                             evaluation_dataset=valid_dataset,
                             dataset_name=dataset_name, 
                             metrics_args = metrics_args,
-                            streaming=streaming)    
+                            streaming=streaming,
+                            use_archer=configurations_sweep["use_archer"],
+                            device_memory_ratio = configurations_sweep["device_memory_ratio"],
+                            )    
                         current_model_initialised = model_name  
                     else:
                         evalEngine.set_dataset(valid_dataset, dataset_name)  
@@ -1038,9 +1079,9 @@ if __name__ == "__main__":
     # model_name = "facebook/nllb-200-distilled-600M"
     # model_name = "t5-11b"
     # model_name = "facebook/nllb-200-1.3B"
-    model_name = "facebook/nllb-moe-54b"
+    # model_name = "facebook/nllb-moe-54b"
     # model_name = "./opus_switch_model_8/checkpoint-1500"
-    # model_name = "./opus_switch_model_16/checkpoint-6000"
+    model_name = "./opus_switch_model_16/checkpoint-6000"
 
     # # dataset_name = "opus100"  # Test Dataset
     dataset_name = "wmt14"
@@ -1071,3 +1112,4 @@ if __name__ == "__main__":
 
     # evalEngine.call_batched(batch_size=32, beam_size=64,max_gen_length=512, save_res_util=save_res_util, save_metrics_csv=True, overwrite_csv=False)
     evalEngine.call_batched(batch_size=2, beam_size=4,max_gen_length=128, save_res_util=save_res_util, save_metrics_csv=False, overwrite_csv=False, streamText=False)
+
