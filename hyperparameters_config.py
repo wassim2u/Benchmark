@@ -1,4 +1,6 @@
 import copy
+# TODO: Better to start naming your files with experiment names that can be customed, and not just model names. Add "experiment_name" as parameter
+
 
 # For measuring throughput, latency, and perhaps memoru footprint
 speed_inference_metric_experiments = {   
@@ -17,6 +19,20 @@ speed_inference_metric_experiments = {
 #     "tokenizer_padding_setting" : ["pad_to_max_length","do_not_pad"],
 #     # "batch_size" : [1,32,64,128,256]
 # }
+
+quality_experiment_configurations_sweep_distilled = {
+    "dataset_size" : ["all", 1],
+    "max_gen_length" : [128], # Maximum generation sequence length
+    "max_input_seq_length": [10,30,-1], # Set to -1 for no limit
+    "beam_size" : [1,2,4],
+    "model_name" : ["facebook/nllb-200-distilled-600M"],
+    "dataset_name" : ["wmt14", "flores200"],
+    "tokenizer_padding_setting" : ["pad_to_max_length","do_not_pad"],
+    "use_archer" : False,
+    "device_memory_ratio" : None
+    # "batch_size" : [1,32,64,128,256]
+}
+
 
 
 
@@ -80,22 +96,21 @@ large_model_quality_experiments_nllb_moe = copy.deepcopy(large_model_quality_exp
 large_model_quality_experiments_nllb_moe["model_name"] = ["facebook/nllb-moe-54b"]
 
 
-
 archer_experiments_device_memory_ratio_config_google = {
-    "dataset_size" : [1],
+    "dataset_size" : [1, "all"],
     "max_gen_length" : [32], # Maximum generation sequence length
     "max_input_seq_length": [-1], # Set to -1 for no limit
     "beam_size" : [1],
     "model_name" : ["google/switch_16_finetuned"],
-    "dataset_name" : ["flores200", "wmt14"],
+    "dataset_name" : ["wmt14"],
     "tokenizer_padding_setting" : ["no_pad_fill"],
     "use_archer" : True,
-    "device_memory_ratio" : 0.3,
+    "device_memory_ratio" : 0.9,
     # "batch_size" : [1,32,64,128,256]
 }
 
 archer_experiments_device_memory_ratio_config_nllb_moe = copy.deepcopy(archer_experiments_device_memory_ratio_config_google)
-large_model_quality_experiments_nllb_moe["model_name"] = ["facebook/nllb-moe-54b"]
+archer_experiments_device_memory_ratio_config_nllb_moe["model_name"] = ["facebook/nllb-moe-54b"]
 
 
 # beam_size_experiments_switch = {

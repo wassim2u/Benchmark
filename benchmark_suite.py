@@ -26,112 +26,30 @@ from transformers.models.m2m_100.modeling_m2m_100 import (
     M2M100Decoder, M2M100Encoder
 )
 import transformers
+from preprocessing import retrieve_relevant_validation_dataset
 
 
 # from deepspeed.accelerator import get_accelerator
 # from deepspeed.profiling.flops_profiler import get_model_profile
-import utils
-from hyperparameters_config import  archer_experiments_device_memory_ratio_config_google, large_model_quality_experiments_switch_w_archer, large_model_quality_experiments_switch_no_archer, quality_experiment_configurations_sweep, large_model_quality_experiments_nllb_moe
+import logfilemanager
+from hyperparameters_config import  quality_experiment_configurations_sweep_distilled, archer_experiments_device_memory_ratio_config_nllb_moe, archer_experiments_device_memory_ratio_config_google, large_model_quality_experiments_switch_w_archer, large_model_quality_experiments_switch_no_archer, quality_experiment_configurations_sweep, large_model_quality_experiments_nllb_moe
 
 from tqdm.auto import tqdm
 import time
 import argparse
 import traceback     
-                
+from logfilemanager import FORWARD_TIMES_FILENAMES, CONFIG, METRIC_REPORTS_DIR_PATH, setup_environment, add_latency_measurement_functionality, forward_decorator     
                 
 import pathlib
-
-def setup_environment():
-    num_gpus = torch.cuda.device_count()
-    for gid in range(num_gpus):
-        torch.cuda.set_device(gid)
-        if torch.cuda.utilization() == 0:
-            break
-setup_environment()
-
-
-CONFIG = {"nvme_path": f"/mnt/{getpass.getuser()}/test-data"}
-METRIC_REPORTS_DIR_PATH = "./metric_logs/"
-
-# TODO: Provide a more uniform and robust way to map files and format the directory
-FORWARD_TIMES_FILENAMES = {
-    "t5-small" : METRIC_REPORTS_DIR_PATH + "t5_latencies.csv",
-    "t5-base" : METRIC_REPORTS_DIR_PATH + "t5_latencies.csv",
-    "t5-large": METRIC_REPORTS_DIR_PATH + "t5_latencies.csv",
-    "nllb-200-1.3B" : METRIC_REPORTS_DIR_PATH + "nllb_latencies.csv",
-    "nllb-200-distilled-600M" : METRIC_REPORTS_DIR_PATH + "nllb_latencies.csv",
-    "facebook/nllb-moe-54b" : METRIC_REPORTS_DIR_PATH + "nllb-moe_latencies.csv",
-    "google/switch-base-128" : METRIC_REPORTS_DIR_PATH + "switch_latencies.csv",
-    "facebook/nllb-200-distilled-1.3B" : METRIC_REPORTS_DIR_PATH + "nllb_latencies.csv",
-    "facebook/nllb-200-distilled-600M" : METRIC_REPORTS_DIR_PATH + "nllb_latencies.csv",
-    "facebook/nllb-200-1.3B" : METRIC_REPORTS_DIR_PATH + "nllb_latencies.csv",
-    "./opus_switch_model_8/checkpoint-1500" : METRIC_REPORTS_DIR_PATH + "switch_latencies.csv",
-    "./opus_switch_model_16/checkpoint-6000" : METRIC_REPORTS_DIR_PATH + "switch_latencies.csv",
-    "google/switch_16_finetuned" : METRIC_REPORTS_DIR_PATH + "switch_latencies.csv",
-
-}
-
-def add_latency_measurement_functionality():
-  
-    transformers.models.t5.modeling_t5._old_t5_forward = T5Stack.forward
-    transformers.models.nllb_moe.modeling_nllb_moe._old_nllb_moe_encoder_forward = (
-        NllbMoeEncoder.forward)
-    transformers.models.nllb_moe.modeling_nllb_moe._old_nllb_moe_decoder_forward = (
-        NllbMoeDecoder.forward)
-    transformers.models.switch_transformers._old_switch_transformers_forward = (
-        SwitchTransformersStack.forward)
-    transformers.models.m2m_100.modeling_m2m_100._old_m2m_100_encoder_forward = (
-        M2M100Encoder.forward)
-    transformers.models.m2m_100.modeling_m2m_100._old_m2m_100_decoder_forward = (
-        M2M100Decoder.forward)
-
-
-
-    T5Stack.forward = forward_decorator(T5Stack.forward, METRIC_REPORTS_DIR_PATH + "t5_latencies.csv")
-    NllbMoeEncoder.forward = forward_decorator(NllbMoeEncoder.forward, METRIC_REPORTS_DIR_PATH + "nllb-moe_latencies.csv")
-    NllbMoeDecoder.forward = forward_decorator(NllbMoeDecoder.forward,  METRIC_REPORTS_DIR_PATH + "nllb-moe_latencies.csv")
-    SwitchTransformersStack.forward = forward_decorator(
-        SwitchTransformersStack.forward, METRIC_REPORTS_DIR_PATH + "switch_latencies.csv")
-    M2M100Encoder.forward = forward_decorator(M2M100Encoder.forward, METRIC_REPORTS_DIR_PATH + "nllb_latencies.csv")
-    M2M100Decoder.forward = forward_decorator(M2M100Decoder.forward, METRIC_REPORTS_DIR_PATH +  "nllb_latencies.csv")
-    
-
-def forward_decorator(orig_forward: Callable, path_to_logfile) -> Callable:
-
-    @functools.wraps(orig_forward)
-    def timer_forward(cls, *args, **kwargs):
-        start_time = time.perf_counter()
-        result = orig_forward(cls, *args, **kwargs)
-        end_time = time.perf_counter()
-
-        # cls.layer_latencies = {"encoder": None, "decoder": []} #Take average for decoder, and for encoder you should take latency per token (divide by sequence length)
-        if hasattr(cls, "is_decoder"):
-            layer_type = "decoder" if cls.is_decoder else "encoder"
-            
-        else:
-            layer_type = "encoder" if isinstance(cls,
-                                                 NllbMoeEncoder) or isinstance(cls,M2M100Encoder) or isinstance(cls, T5EncoderModel) else "decoder"
-            
-        
-        with open(path_to_logfile, 'a') as f:
-            # f.write(f"{layer_type},{end_time - start_time}\n")
-
-            writer = csv.writer(f)
-            writer.writerow([layer_type, end_time - start_time])
-            
-
-
-        return result
-
-    return timer_forward
+from datasets_processor import dataset_name_map, dataset_info, lang_code_t5_dictionary
 
 # Add functionality to original transformers forward method to log latency
 add_latency_measurement_functionality()
 
 
-source_lang = "en"
-target_lang = "fr"
-prefix = "translate English to French: "
+# source_lang = "en"
+# target_lang = "fr"
+# prefix = "translate English to French: "
 
 
 # clf_metrics = evaluate.combine(["sacrebleu", "f1", "precision", "recall"])
@@ -159,26 +77,7 @@ metrics_name_map_dict = {
 
 # max_source_length = 1024
 
-dataset_name_map = {
-    "facebook/flores" : "flores200"
-}
 
-dataset_info = {
-    "wmt14": {
-        "en-fr": "fr-en"
-    },
-    "opus100": {
-        "en-fr": "en-fr"
-    },
-    "flores200":{
-        
-    }
-}
-
-lang_code_t5_dictionary = {
-    "en": "English",
-    "fr" : "French"
-}
 
 # models = ["t5-small", "t5-base", "t5-large", "google/switch-base-128", "nllb-200-distilled-600M", "nllb-moe-54b"]
 
@@ -239,7 +138,7 @@ def postprocess_text(preds, labels):
 
 
 class Evaluation:
-    def __init__(self,model_name, evaluation_dataset, dataset_name, metrics_args, hyperparameters={}, use_archer=False, device_memory_ratio=0.9, streaming=False, src_lang="en", tgt_lang="fr"):
+    def __init__(self,model_name, evaluation_dataset, dataset_name, metrics_args, hyperparameters={}, use_archer=False, device_memory_ratio=None, streaming=False, src_lang="en", tgt_lang="fr"):
         
         self.model_name = model_name
         self.set_dataset(evaluation_dataset, dataset_name)
@@ -249,7 +148,7 @@ class Evaluation:
         self.src_lang = src_lang
         self.tgt_lang = tgt_lang
 
-        if src_lang == "en" and tgt_lang == "fr" and "t5" in model_name or "google/switch":
+        if src_lang == "en" and tgt_lang == "fr" and ("t5" in model_name or "google/switch" in model_name):
             self.prefix = "translate English to French: "
         else:
             self.prefix = ""
@@ -267,7 +166,12 @@ class Evaluation:
         
         self.archer_engine = None
         self.use_archer = use_archer
-
+        if not self.use_archer:
+            self.device_memory_ratio = None
+        if self.use_archer and device_memory_ratio is None:
+            self.device_memory_ratio = 0.9
+        else:
+            self.device_memory_ratio = device_memory_ratio
         
         # Define model and tokenizer
         if model_name in ["t5-small", "t5-base", "t5-large", "t5-3b", "t5-11b", "google/t5-v1_1-small"]: 
@@ -285,7 +189,7 @@ class Evaluation:
         elif "nllb-moe-54b" in model_name and src_lang == "en" and tgt_lang == "fr":
             CONFIG["device_memory_ratio"] = device_memory_ratio #0.65 or lower is better
             CONFIG["nvme_path"] = os.path.join(CONFIG["nvme_path"], "nllb-moe-54b")
-            # os.system(f"rm -rf {CONFIG['nvme_path']}")
+            os.system(f"rm -rf {CONFIG['nvme_path']}")
 
             # self.tokenizer = NllbTokenizer.from_pretrained(model_name, src_lang="eng_Latn", tgt_lang="fra_Latn")
             self.tokenizer = AutoTokenizer.from_pretrained(model_name, src_lang="eng_Latn", tgt_lang="fra_Latn")
@@ -437,7 +341,7 @@ class Evaluation:
         from transformers import DataCollatorForSeq2Seq
         # If path already exists for recording latencies using decorated function, it is deleted. This is to avoid rewrapping the model twice.
         self.PATH_TO_LOG_LATENCY = FORWARD_TIMES_FILENAMES[self.model_name]
-        if pathlib.Path(self.PATH_TO_LOG_LATENCY).exists():
+        if os.path.exists(self.PATH_TO_LOG_LATENCY):
             os.remove(self.PATH_TO_LOG_LATENCY)
         
         filtered_dataset = None
@@ -480,12 +384,12 @@ class Evaluation:
                     record_shapes=False,
                     profile_memory=True,
                     with_flops=False,
-                    # schedule=torch.profiler.schedule(
-                    #         wait=1,
-                    #         warmup=1,
-                    #         active=3,
-                    #         repeat=2,
-                    #     ),
+                    schedule=torch.profiler.schedule(
+                            wait=1,
+                            warmup=1,
+                            active=1,
+                            repeat=1,
+                        ),
                  on_trace_ready=torch.profiler.tensorboard_trace_handler('./log/' + self.model_name +"_"+ self.dataset_name),
             ) 
             profInference.start()
@@ -493,9 +397,6 @@ class Evaluation:
         for batch in tqdm(eval_dataloader):
 
                 input_ids = batch["input_ids"].to(self.device, non_blocking=True)
-                if pytorch_profiling:
-                    record_generation = record_function("model_inference")
-                    record_generation.record()
                 with torch.no_grad():
                     if "nllb" in self.model_name:
                                 
@@ -519,8 +420,8 @@ class Evaluation:
                         # outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=False, max_length=128, num_beams=1) # Works, for transformers.
                         outputs = self.model.generate(input_ids, do_sample=False, max_length=max_gen_length, num_beams=beam_size, streamer=streamer)
                 
-                if pytorch_profiling:
-                    record_generation.stop()
+                # if pytorch_profiling:
+                #     record_generation.stop()
 
                 attention_mask = (input_ids != config.pad_token_id).to(input_ids.dtype)
                 decoded_preds, decoded_labels, pred_length  = postprocess_batch(outputs, batch["labels"], self.tokenizer)
@@ -530,7 +431,8 @@ class Evaluation:
                     self.all_metrics[metric_name].add_batch(predictions=decoded_preds, references=decoded_labels)
 
                 pred_lengths = np.concatenate((pred_lengths, pred_length), axis=0) if len(pred_lengths) !=0 else pred_length
-            
+              
+
                 decoded_preds, decoded_labels = None, None
 
                 # For calculating throughput, we need to know the number of total tokens generated.
@@ -538,7 +440,7 @@ class Evaluation:
                 number_of_total_decoded_tokens += np.sum(pred_length) #Sum of generated lengths
                 total_encoded_tokens.append(torch.sum(attention_mask))  #Number of tokens. Will be used to calculate latency per token
 
-
+  
                 del input_ids
 
                 del attention_mask
@@ -546,6 +448,9 @@ class Evaluation:
                 gc.collect()
                 # torch.cuda.synchronize()
                 torch.cuda.empty_cache()
+
+                if pytorch_profiling:
+                    profInference.step()
 
         
         if pytorch_profiling:
@@ -611,6 +516,7 @@ class Evaluation:
             total_params = sum(p.numel() for p in self.model.parameters())
             metric_results_dict_w_params["total_params"] = total_params
             metric_results_dict_w_params["use_archer"] = self.use_archer
+            metric_results_dict_w_params["device_memory_ratio"] = self.device_memory_ratio
             metric_results_dict_w_params["dataset_name"] = self.dataset_name
             metric_results_dict_w_params["dataset_size"] = len(self.evaluation_dataset)
             metric_results_dict_w_params["dataset_size_after_filter_wrt_input_len"] = len(filtered_dataset)
@@ -633,9 +539,15 @@ class Evaluation:
             # metric_results_dict["mem_footprint_percentage"] = self.dataset_size
             # metric_results_dict["mem_footprint_number"] = self.dataset_size
 
-            filename_csv = METRIC_REPORTS_DIR_PATH+ self.model_name + "_"+ self.dataset_name  + "_metrics.csv"
+            filename_csv = METRIC_REPORTS_DIR_PATH+ self.model_name + "_"+ self.dataset_name  
             filename_csv = filename_csv.replace("facebook/", "")
             filename_csv = filename_csv.replace("google/", "")
+            if self.use_archer:
+                
+                filename_csv = filename_csv + "_archer_{}".format(self.device_memory_ratio)     
+
+            filename_csv = filename_csv + "_metrics.csv"   
+
             if overwrite_csv or not pathlib.Path(filename_csv).exists():
                 pd.DataFrame(metric_results_dict_w_params, index=[0]).to_csv(filename_csv, index=False)
                 print("Created new csv file: " + filename_csv)
@@ -682,8 +594,8 @@ class Evaluation:
                     profile_memory=True,
                     with_flops=False,
                     schedule=torch.profiler.schedule(
-                            wait=2,
-                            warmup=2,
+                            wait=1,
+                            warmup=1,
                             active=3,
                             repeat=2,
                         ),
@@ -703,9 +615,18 @@ class Evaluation:
                             if  "nllb" in model_name:
                                 # Max_length and num_beams are set to the default values as in the paper.
                                 outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=False, max_length=128, num_beams=1)
-
+                            elif "switch" in self.model_name:
+                                self.model.config.decoder_start_token_id = self.tokenizer.pad_token_id
+                                self.model.config.bos_token_id = self.tokenizer.pad_token_id
+                                self.model.config.eos_token_id = self.tokenizer.pad_token_id
+                                decoder_start_token_id = self.model.config.pad_token_id
+                                outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=False, max_length=128, num_beams=1,   
+                                                            decoder_start_token_id=decoder_start_token_id, 
+                                                            bos_token_id=self.tokenizer.bos_token_id,
+                                                            eos_token_id=self.tokenizer.eos_token_id)
                             else:
                                 outputs = self.model.generate(batch["input_ids"].to(self.device), do_sample=False, max_length=128, num_beams=1)
+                    
                     profInference.step() 
 
                 endTime.record()
@@ -721,17 +642,15 @@ class Evaluation:
                 gc.collect()
 
 
+
                 
 
-
-    def add_prefix(self, example):
-        return prefix + example[source_lang]
 
 
     def preprocess_function_with_text_target(self,examples):
        
                     
-        inputs = [prefix + ex["en"] for ex in examples["translation"]]
+        inputs = [self.prefix + ex["en"] for ex in examples["translation"]]
         targets = [ex["fr"] for ex in examples["translation"]]
 
 
@@ -812,71 +731,38 @@ class Evaluation:
         return metric_results_dict
 
 
-def load_wmt14():
-    pass
-
-def load_flores200(dataset_size):
-    pass
 
 
-def retrieve_relevant_validation_dataset(dataset_name, dataset_size):
-    
-    valid_dataset, valid_split = None, None
-    if dataset_name == "wmt14":
-        if dataset_size == "all":
-            valid_split = "validation"
-        else:
-            if int(dataset_size) > 3000:
-                print("You have selected a dataset size larger than the validation set. Using the entire validation set (3000).")
-            dataset_size = min(int(dataset_size), 3000)
-            valid_split = "validation[:{}]".format(dataset_size)
-        
-        valid_dataset = load_dataset(dataset_name, "fr-en", split=valid_split)
-    elif dataset_name == "flores200" or dataset_name == "facebook/flores":
-        if dataset_size == "all":
-            valid_split = "dev"
-        else:
-            if int(dataset_size) > 997:
-                print("You have selected a dataset size larger than the validation set. Using the entire validation set (997).")
-            dataset_size = min(int(dataset_size), 997)
-            valid_split = "dev[:{}]".format(dataset_size)
-        
-        dataset_flores200_fra = load_dataset("facebook/flores", "fra_Latn", split=valid_split)
-        dataset_flores200_eng = load_dataset("facebook/flores", "eng_Latn", split=valid_split)
-
-        translation_list = [{"en": dataset_flores200_eng['sentence'][idx], "fr": dataset_flores200_fra['sentence'][idx]} for idx in range(len(dataset_flores200_eng['sentence']))  ]
-        
-        dd_dict = {"translation": translation_list}
-        valid_dataset = Dataset.from_dict(dd_dict)
-        
 
 
-        # valid_dataset = {"translation": {"en": dataset_flores200_eng['sentence'], "fr": dataset_flores200_fra['sentence']}}   
-    else:
-        raise NotImplementedError("Dataset not supported, or may be written incorrectly")
-    
-    return valid_dataset
-
-
+# TODO: ! Function is bugged in latest version, won't skip experiments:  ./metric_logs/nllb-200-distilled-600M_wmt14_metrics.csv. W
 def retrieve_previous_experiments(configurations_sweep):
         previous_experiments = {}
         for model_name in configurations_sweep["model_name"]:
             for dataset_name in configurations_sweep["dataset_name"]:
-
-                filename_csv = METRIC_REPORTS_DIR_PATH+ model_name + "_"+ dataset_name  + "_metrics.csv"
+                filename_csv = METRIC_REPORTS_DIR_PATH+ model_name + "_"+ dataset_name 
+                if configurations_sweep["use_archer"]:
+                    filename_csv = filename_csv + "_archer_{}".format(configurations_sweep["device_memory_ratio"])
+                filename_csv = filename_csv +  "_metrics.csv"
                 filename_csv = filename_csv.replace("facebook/", "")
                 filename_csv = filename_csv.replace("google/", "")
-                if pathlib.Path(filename_csv).exists():
+
+                if os.path.isfile(filename_csv):
+                    print("tes")
                     previous_experiments[model_name + dataset_name] = pd.read_csv(filename_csv)
         return previous_experiments
 
 
 
 def skip_previous_experiments(previous_experiments,current_params):
+
     # If the experiment has already been run, skip it.
+    print(previous_experiments)
+    print(current_params)
     if current_params["model_name"] + current_params["dataset_name"] in previous_experiments.keys():
         # params_df = pd.DataFrame(current_params, index=[0])
         param_cols = current_params.keys()        
+
         subset_params_df =previous_experiments[current_params["model_name"] + current_params["dataset_name"]][param_cols]
 
         # if params_df.isin(subset_params_df).all().all():
@@ -884,11 +770,21 @@ def skip_previous_experiments(previous_experiments,current_params):
         #     return True
         
 
-        if len(subset_params_df.loc[(subset_params_df["dataset_size"] == int(current_params["dataset_size"])) & (subset_params_df["max_gen_length"] == int(current_params["max_gen_length"])) & (subset_params_df["beam_size"] == int(current_params["beam_size"])) & (subset_params_df["max_input_seq_length"] == int(current_params["max_input_seq_length"])) & (subset_params_df["tokenizer_padding_setting"] == current_params["tokenizer_padding_setting"])]) > 0:
+        # if len(subset_params_df.loc[(subset_params_df["dataset_size"] == int(current_params["dataset_size"])) & (subset_params_df["max_gen_length"] == int(current_params["max_gen_length"])) & (subset_params_df["beam_size"] == int(current_params["beam_size"])) & (subset_params_df["max_input_seq_length"] == int(current_params["max_input_seq_length"])) & (subset_params_df["tokenizer_padding_setting"] == current_params["tokenizer_padding_setting"]) & (subset_params_df[""])]) > 0:
+        if len(
+                subset_params_df.loc[(subset_params_df["dataset_size"] == int(current_params["dataset_size"])) & 
+                                    (subset_params_df["max_gen_length"] == int(current_params["max_gen_length"])) & 
+                                    (subset_params_df["beam_size"] == int(current_params["beam_size"])) & 
+                                    (subset_params_df["max_input_seq_length"] == int(current_params["max_input_seq_length"])) & 
+                                    (str(subset_params_df["tokenizer_padding_setting"])== (current_params["tokenizer_padding_setting"]))  &
+                                    (subset_params_df["use_archer"] == (current_params["use_archer"]))]
+                        ) > 0:
 
+            if subset_params_df.get("device_memory_ratio") is None or subset_params_df["device_memory_ratio"] == int(current_params["device_memory_ratio"]):
+            
 
-            print("Experiment already ran. Skipping...")
-            return True
+                print("Experiment already ran. Skipping...")
+                return True
     return False
 
 if __name__ == "__main__":
@@ -901,23 +797,22 @@ if __name__ == "__main__":
     metrics_args = ["sacrebleu", "spBleu", "chrf", "chrfpp", "meteor"]
 
 
-    sweep = True
-    pytorch_profiling = True
-    dataset_name = "wmt14"
-
+    sweep = False
+    pytorch_profiling = False
+    
     continue_with_errors  = True
     counter_error = 20
     streaming = False
     save_res_util = False
     rerun_experiments = False
     # Parse the arguments
-    args = utils.parse_args()
+    args = logfilemanager.parse_args()
 
     # configurations_sweep = quality_experiment_configurations_sweep
     # configurations_sweep = large_model_quality_experiments_switch_w_archer
-    configurations_sweep = archer_experiments_device_memory_ratio_config_google
+    # configurations_sweep = archer_experiments_device_memory_ratio_config_google
 
-
+    configurations_sweep    =       quality_experiment_configurations_sweep_distilled
 
     if sweep:
         # Retrieve previous experiments. If they exist, we will not run them again.
@@ -976,7 +871,7 @@ if __name__ == "__main__":
                                     # Reset batch size to the original one
                                     batch_size = original_batch_size
                                     print("Beam Size: " + str(beam_size))
-                                    text = f"Hyperparameters: model_name: {model_name}, Batch_size: {batch_size}, dataset_size: {len(valid_dataset)}, max_gen_length: {max_gen_length}, beam_size: {beam_size}, max_input_seq_length: {max_input_seq_length}, tokenizer_padding_setting: {tokenizer_padding_setting}, dataset_name= {dataset_name} \n"
+                                    text = f"Hyperparameters: model_name: {model_name}, use_archer: {configurations_sweep['use_archer'] },  Batch_size: {batch_size}, dataset_size: {len(valid_dataset)}, max_gen_length: {max_gen_length}, beam_size: {beam_size}, max_input_seq_length: {max_input_seq_length}, tokenizer_padding_setting: {tokenizer_padding_setting}, dataset_name= {dataset_name} \n"
                                     print(text)
 
                                     current_params = {"model_name": model_name,
@@ -987,6 +882,8 @@ if __name__ == "__main__":
                                                     "max_input_seq_length": max_input_seq_length,
                                                     "tokenizer_padding_setting": tokenizer_padding_setting,
                                                     "dataset_name": dataset_name,
+                                                    "use_archer": configurations_sweep["use_archer"],
+                                                    "device_memory_ratio": configurations_sweep["device_memory_ratio"],
                                                     }
                                                     
                                     # if the experiment has already been run, skip it.
@@ -1000,6 +897,7 @@ if __name__ == "__main__":
                                                             save_res_util=save_res_util,
                                                             beam_size=beam_size,
                                                             max_gen_length=max_gen_length,
+                                                            pytorch_profiling=pytorch_profiling,
                                                             save_metrics_csv=True, overwrite_csv=False)
                                 
                                     except Exception as e:
@@ -1075,14 +973,15 @@ if __name__ == "__main__":
     # # model_name = "google/t5-v1_1-small" # Test Model
     # model_name = "t5-base" # Test Model
     # model_name = "t5-small"
+    model_name = "t5-large"
     # model_name = "google/switch-base-128"
     # model_name = "facebook/nllb-200-distilled-600M"
     # model_name = "t5-11b"
     # model_name = "facebook/nllb-200-1.3B"
     # model_name = "facebook/nllb-moe-54b"
     # model_name = "./opus_switch_model_8/checkpoint-1500"
-    model_name = "./opus_switch_model_16/checkpoint-6000"
-
+    # model_name = "./opus_switch_model_16/checkpoint-6000"
+    # model_name = "./google/switch_16_finetuned"
     # # dataset_name = "opus100"  # Test Dataset
     dataset_name = "wmt14"
         # dataset_name = "wmt14"
@@ -1105,11 +1004,17 @@ if __name__ == "__main__":
     # print(all_dataset[1])
     print()
     # exit()
+    save_metrics_csv = True
 
-    hyperparameters = {"max_input_seq_length": 50, "tokenizer_padding_setting": "do_not_pad"}
+    hyperparameters = {"max_input_seq_length": -1, "tokenizer_padding_setting": "do_not_pad"}
 
-    evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters)
+    evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters, use_archer=False, device_memory_ratio=0.6)
+    # evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters, use_archer=True, device_memory_ratio=0.9)
+    # evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters, use_archer=True, device_memory_ratio=0.3)
+    # evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters, use_archer=False)
+    # evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters)
 
-    # evalEngine.call_batched(batch_size=32, beam_size=64,max_gen_length=512, save_res_util=save_res_util, save_metrics_csv=True, overwrite_csv=False)
-    evalEngine.call_batched(batch_size=2, beam_size=4,max_gen_length=128, save_res_util=save_res_util, save_metrics_csv=False, overwrite_csv=False, streamText=False)
 
+    evalEngine.call_batched(batch_size=32, beam_size=4,max_gen_length=512, save_res_util=save_res_util, save_metrics_csv=save_metrics_csv, overwrite_csv=False, streamText=False)
+    # evalEngine.call_batched(batch_size=2, beam_size=4,max_gen_length=128, save_res_util=save_res_util, save_metrics_csv=False, overwrite_csv=False, streamText=False)
+    # evalEngine.evaluate_speed(batch_size=1)

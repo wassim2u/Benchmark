@@ -1,0 +1,2 @@
+model_name,total_params,use_archer,device_memory_ratio,dataset_name,dataset_size,dataset_size_after_filter_wrt_input_len,src_lang,tgt_lang,batch_size,beam_size,max_gen_length,max_input_seq_length,tokenizer_padding_setting,sacrebleu,spBleu,chrf,chrfpp,meteor,gen_len,encoder_latency_s,decoder_latency_s,encoder_throughput,decoder_throughput
+facebook/nllb-moe-54b,524717009,True,0.6,wmt14,1,1,en,fr,32,1,32,-1,no_pad_fill,0.0,0.0,12.049999603807512,9.037499702855634,0.0,32.0,62.68459138297476,1.9184205674551307,0.33501056,16.680388306329206
