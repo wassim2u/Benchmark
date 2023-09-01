@@ -137,7 +137,7 @@ def postprocess_text(preds, labels):
 
 
 
-class Evaluation:
+class BenchmarkSuite:
     def __init__(self,model_name, evaluation_dataset, dataset_name, metrics_args, hyperparameters={}, use_archer=False, device_memory_ratio=None, streaming=False, src_lang="en", tgt_lang="fr"):
         
         self.model_name = model_name
@@ -834,7 +834,7 @@ if __name__ == "__main__":
                     print("Validation Dataset Size: " + str(len(valid_dataset)))
                     if current_model_initialised is None or current_model_initialised != model_name:
                         
-                        evalEngine = Evaluation(model_name=model_name, 
+                        evalEngine = BenchmarkSuite(model_name=model_name, 
                             evaluation_dataset=valid_dataset,
                             dataset_name=dataset_name, 
                             metrics_args = metrics_args,
@@ -973,9 +973,9 @@ if __name__ == "__main__":
     # # model_name = "google/t5-v1_1-small" # Test Model
     # model_name = "t5-base" # Test Model
     # model_name = "t5-small"
-    model_name = "t5-large"
+    # model_name = "t5-large"
     # model_name = "google/switch-base-128"
-    # model_name = "facebook/nllb-200-distilled-600M"
+    model_name = "facebook/nllb-200-distilled-600M"
     # model_name = "t5-11b"
     # model_name = "facebook/nllb-200-1.3B"
     # model_name = "facebook/nllb-moe-54b"
@@ -983,8 +983,8 @@ if __name__ == "__main__":
     # model_name = "./opus_switch_model_16/checkpoint-6000"
     # model_name = "./google/switch_16_finetuned"
     # # dataset_name = "opus100"  # Test Dataset
+    dataset_name = "facebook/flores"
     dataset_name = "wmt14"
-        # dataset_name = "wmt14"
     # dataset_name="facebook/flores"
 
     # -------------------------
@@ -994,12 +994,14 @@ if __name__ == "__main__":
     # # TODO: Change to FLORES
     # # TODO: Make sure to not use the same dataset that was used to train the models!!
     # all_dataset = load_dataset(dataset_name, "fr-en", split="validation", streaming=streaming)
-    all_dataset = retrieve_relevant_validation_dataset(dataset_name, dataset_size=3000)
+    all_dataset = retrieve_relevant_validation_dataset(dataset_name, dataset_size=1)
 
     # all_dataset = load_dataset(dataset_name, "fr-en", split="test", streaming=streaming)
     print(all_dataset)
     # all_dataset = load_dataset(dataset_name, "fra_Latn", split="dev[:100]", streaming=streaming)    
     print(all_dataset["translation"][0]["en"])
+    print(all_dataset["translation"][0]["fr"])
+
     # all_dataset = load_dataset(dataset_name, "eng_Latn", split="dev[:100]", streaming=streaming)
     # print(all_dataset[1])
     print()
@@ -1008,13 +1010,13 @@ if __name__ == "__main__":
 
     hyperparameters = {"max_input_seq_length": -1, "tokenizer_padding_setting": "do_not_pad"}
 
-    evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters, use_archer=False, device_memory_ratio=0.6)
-    # evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters, use_archer=True, device_memory_ratio=0.9)
-    # evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters, use_archer=True, device_memory_ratio=0.3)
-    # evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters, use_archer=False)
-    # evalEngine = Evaluation(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters)
+    evalEngine = BenchmarkSuite(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters, use_archer=False, device_memory_ratio=0.6)
+    # evalEngine = BenchmarkSuite(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters, use_archer=True, device_memory_ratio=0.9)
+    # evalEngine = BenchmarkSuite(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters, use_archer=True, device_memory_ratio=0.3)
+    # evalEngine = BenchmarkSuite(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters, use_archer=False)
+    # evalEngine = BenchmarkSuite(model_name=model_name, evaluation_dataset=all_dataset, dataset_name=dataset_name , metrics_args = metrics_args, streaming=streaming, hyperparameters=hyperparameters)
 
 
-    evalEngine.call_batched(batch_size=32, beam_size=4,max_gen_length=512, save_res_util=save_res_util, save_metrics_csv=save_metrics_csv, overwrite_csv=False, streamText=False)
+    evalEngine.call_batched(batch_size=1, beam_size=4,max_gen_length=128, save_res_util=save_res_util, save_metrics_csv=save_metrics_csv, overwrite_csv=False, streamText=False)
     # evalEngine.call_batched(batch_size=2, beam_size=4,max_gen_length=128, save_res_util=save_res_util, save_metrics_csv=False, overwrite_csv=False, streamText=False)
     # evalEngine.evaluate_speed(batch_size=1)
