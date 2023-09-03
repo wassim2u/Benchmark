@@ -27,19 +27,11 @@ For more details about the conclusions found from the results and a deeper under
 
 The `submission` branch contains the version submitted at the University of Edinburgh.
 
-https://github.com/wassim2u/Benchmark/blob/main/Dissertation/README_figures/Workflow.pdf
 
 
 # Table of Content
-To view the table of content, please toggle 
-
 <details>
-    <summary></summary>
-    Foldable Content[enter image description here][1]
-
-![Table of Contents][./Dissertation/README_figures/Table_of_Contents.jpg]
-![Table of Contents][./Dissertation/README_figures/Table_of_Contents_2.jpg]
-
+    <summary> To view the table of contents, click here to toggle the switch: </summary>
 
   ![Table of Contents](./Dissertation/README_figures/Table_of_Contents.jpg)
 ![Table of Contents](./Dissertation/README_figures/Table_of_Contents_2.jpg)
@@ -47,7 +39,6 @@ To view the table of content, please toggle
 
 </details>
 
-# Table of Content
 
 
 
@@ -57,7 +48,7 @@ To view the table of content, please toggle
 ## Installation 
 In order to run the benchmarking suite, you would require the libraries listed in the `requirements.txt` file. 
 
-For Archer, you will need access to the private project in order to install it for the benchmarking to run sucessfully by default. Please reach out to Luo Mai or any members of the team working in Archer.
+For Archer, you will need access to the private project in order to install it for the benchmarking to run successfully by default. Please reach out to Luo Mai or any members of the team working in Archer.
 As an alternative, any lines that call onto the Archer library will need to be commented out. 
 
 # Running the Suite
@@ -75,12 +66,13 @@ To customise the experiment or configurations wanted, you can find an example of
 The following tables contain the benchmarks generated for the running of a model: 
 
 Quality Metrics:
+
 | Metric | Description                                                                                                                                          | Measurement                                                                 |
 |--------|------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------|
-| BLEU   | The most widely used MT metric for the ease of its simplicity. Count matching n-grams in the candidate translation to n-grams in the reference text. | $$ text{BLEU} = \text{BP}\cdot\exp \bigg( \sum_{n=1}^{N} w_n \log p_n \bigg) $$  |
-| spBLEU | BLEU score applied to text that has been tokenized using the SentencePiece, aimed to mitigate BLEU's tokenization-dependence                         | $\text{BLEU} = \text{BP}\cdot\exp \bigg( \sum_{n=1}^{N} w_n \log p_n \bigg) |
-| chrF   | Using precision and recall of character n-grams, which are sequences of characters of length ”n".                                                    | $    chrF = \frac{(1+\beta^2)*ngrP*ngrR}{\beta^2*ngrP + ngrR}$              |
-| chrF++ | chrF score with the inclusion of n-gram words                                                                                                        | $chrF\text{++} = \frac{(1+\beta^2)*ngrP*ngrR}{\beta^2*ngrP + ngrR}$         |
+| BLEU   | The most widely used MT metric for the ease of its simplicity. Count matching n-grams in the candidate translation to n-grams in the reference text. | $` text{BLEU} = \text{BP}\cdot\exp \bigg( \sum_{n=1}^{N} w_n \log p_n \bigg) `$  |
+| spBLEU | BLEU score applied to text that has been tokenized using the SentencePiece, aimed to mitigate BLEU's tokenization-dependence                         | $` \text{BLEU} = \text{BP}\cdot\exp \bigg( \sum_{n=1}^{N} w_n \log p_n \bigg)`$ |
+| chrF   | Using precision and recall of character n-grams, which are sequences of characters of length ”n".                                                    | $` chrF = \frac{(1+\beta^2)*ngrP*ngrR}{\beta^2*ngrP + ngrR}$ `$            |
+| chrF++ | chrF score with the inclusion of n-gram words                                                                                                        | $` chrF = \frac{(1+\beta^2)*ngrP*ngrR}{\beta^2*ngrP + ngrR}$ `$        |
 | METEOR | Exact word matching through the calculation of unigram precision and recall to retrieve the harmonic mean                                            | $METEOR = (1 - P_{en}) * F_{mean}$                                          |
 
 
