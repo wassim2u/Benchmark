@@ -1,6 +1,6 @@
 # Benchmarking Large Language AI Models for Machine Translation
 
-The repository contains the code developed for my research dissertation work produced as part of my studies in MSc Artificial Intelligence at the University of Edinburgh 2022-2023. The objective is to create a benchmarking tool to evaluate models by their quality and efficiency of output. In addition, the work done can be used to evaluate the performance of optimisation and inference engines like Deepspeed. The value of the outcome of further iterations of this research is to accelerate the development of AI models.
+The repository contains the code developed for my research dissertation work produced as part of my studies in MSc Artificial Intelligence at the University of Edinburgh 2022-2023. The objective is to create a benchmarking tool to evaluate models by their quality and efficiency of output. In addition, the work done can be used to evaluate the performance of optimisation and inference engines like [Deepspeed from Microsoft](https://github.com/microsoft/DeepSpeed/). The value of the outcome of further iterations of this research is to accelerate the development of AI models.
 
 The following excerpt is the abstract extracted from the paper:
 
@@ -23,7 +23,7 @@ models T5 and NLLB and then on sparse, larger models such as SwitchTransformer
 
 
 For more details about the conclusions found from the results and a deeper understanding of the framework, please refer to the
-[Dissertation Docment](./Dissertation/Benchmarking_Large_Language_AI_Models_for_Machine_Translation%20(21).pdf).
+[Dissertation Document](./Dissertation/Benchmarking_Large_Language_AI_Models_for_Machine_Translation%20(21).pdf).
 
 The `submission` branch contains the version submitted at the University of Edinburgh.
 
